@@ -1,0 +1,45 @@
+name: Publish Church Communications 1.0.5
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'staging/1.0.5/READY'
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild and verify 1.0.5
+        run: |
+          cat staging/1.0.5/part-*.b64 | base64 -d > /tmp/Church-Communications-1.0.5.zip
+          ACTUAL=$(sha256sum /tmp/Church-Communications-1.0.5.zip | awk '{print $1}')
+          EXPECTED=a2c89a9d4487acc4f06801fc51ed30969ed55d2ee9642ff10c2f1ac085ad6892
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+          unzip -t /tmp/Church-Communications-1.0.5.zip
+          rm -rf /tmp/cc105 && mkdir -p /tmp/cc105
+          unzip -q /tmp/Church-Communications-1.0.5.zip -d /tmp/cc105
+          find /tmp/cc105/Church-Communications -name '*.php' -type f -print0 | xargs -0 -n1 php -l
+          grep -F "define('CC_VERSION', '1.0.5');" /tmp/cc105/Church-Communications/config.php
+          grep -F "value=\"edit_location\"" /tmp/cc105/Church-Communications/admin.php
+          grep -F "value=\"delete_location\"" /tmp/cc105/Church-Communications/admin.php
+          mkdir -p releases
+          cp /tmp/Church-Communications-1.0.5.zip releases/Church-Communications-1.0.5.zip
+          cat > update.json <<EOF
+          {
+            "version": "1.0.5",
+            "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.5.zip",
+            "sha256": "$ACTUAL",
+            "notes": "Adds profile pictures, group pictures in chat headers, Seen-by profile icons, per-group Team Leaders with team-managed invites and membership, plus Admin edit/delete controls for locations. Location deletion preserves existing message history."
+          }
+          EOF
+      - name: Publish verified release
+        run: |
+          git config user.name "sBranha"
+          git config user.email "sgbcdb@gmail.com"
+          git add releases/Church-Communications-1.0.5.zip update.json
+          git commit -m "Publish Church Communications 1.0.5" || exit 0
+          git push
