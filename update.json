@@ -1,6 +1,6 @@
 {
   "version": "1.0.5",
-  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.5.zip",
-  "sha256": "a2c89a9d4487acc4f06801fc51ed30969ed55d2ee9642ff10c2f1ac085ad6892",
-  "notes": "Adds profile pictures, group pictures in chat headers, Seen-by profile icons, per-group Team Leaders with team-managed invites and membership, plus Admin edit/delete controls for locations. Location deletion preserves existing message history."
+  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.5-update2.zip",
+  "sha256": "dc884a37eb5cd4fee1d266e1bc24a51beec8257a67a75b2ca7601cc7f1ae2dea",
+  "notes": "Compatibility update package for 1.0.5. Excludes setup.php because setup is only for brand-new installations. Includes Team Leaders, profile pictures, group pictures, Seen-by icons, and edit/delete locations."
 }
