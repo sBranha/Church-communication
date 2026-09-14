@@ -1,6 +1,6 @@
 {
   "version": "1.0.4",
-  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.4-site-update.zip",
-  "sha256": "985d646b13ce08a94faf3781fae7523da94a940af7680b8c0facc8ec0520ec5b",
-  "notes": "Adds per-group Team Leaders, team-managed invites and membership, profile pictures, group pictures in chat headers, and Seen-by profile icons while keeping Acknowledge separate."
+  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.4-updater-bridge.zip",
+  "sha256": "d2a455e61079f6755923efa1f4a7d02fc7c34fae5b6156c249c347b902b5a411",
+  "notes": "Updater engine upgrade: installs the David-style verified updater with staging, SHA-256 checks, SQLite backup, PHP validation when available, and rollback protection. No phone download is required."
 }

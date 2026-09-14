@@ -10,9 +10,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Hash 1.0.4 package
+      - name: Verify 1.0.4 updater bridge
         run: |
-          echo "PACKAGE_SHA256=$(sha256sum releases/Church-Communications-1.0.4-site-update.zip | awk '{print $1}')"
-          rm -rf /tmp/cc104 && mkdir -p /tmp/cc104
-          unzip -q releases/Church-Communications-1.0.4-site-update.zip -d /tmp/cc104
-          find /tmp/cc104 -type f -print0 | sort -z | xargs -0 sha256sum
+          ACTUAL=$(sha256sum releases/Church-Communications-1.0.4-updater-bridge.zip | awk '{print $1}')
+          EXPECTED=d2a455e61079f6755923efa1f4a7d02fc7c34fae5b6156c249c347b902b5a411
+          echo "actual=$ACTUAL"
+          echo "expected=$EXPECTED"
+          test "$ACTUAL" = "$EXPECTED"
+          unzip -t releases/Church-Communications-1.0.4-updater-bridge.zip
+          rm -rf /tmp/ccbridge && mkdir -p /tmp/ccbridge
+          unzip -q releases/Church-Communications-1.0.4-updater-bridge.zip -d /tmp/ccbridge
+          php -l /tmp/ccbridge/Church-Communications/config.php
+          php -l /tmp/ccbridge/Church-Communications/lib/bootstrap.php
+          php -l /tmp/ccbridge/Church-Communications/lib/updater.php
+          grep -F "define('CC_VERSION', '1.0.4');" /tmp/ccbridge/Church-Communications/config.php
