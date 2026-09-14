@@ -1,6 +1,6 @@
 {
-  "version": "1.0.3",
-  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.3-bridge.zip",
-  "sha256": "af566ba5c0ebcd14483aa619e6b67777dc01a14cfee7c981f4343d69bb4930a5",
-  "notes": "Updater bridge: switches Church Communications to verified individual-file updates so future updates do not depend on large binary ZIP uploads."
+  "version": "1.0.4",
+  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.4-site-update.zip",
+  "sha256": "985d646b13ce08a94faf3781fae7523da94a940af7680b8c0facc8ec0520ec5b",
+  "notes": "Adds per-group Team Leaders, team-managed invites and membership, profile pictures, group pictures in chat headers, and Seen-by profile icons while keeping Acknowledge separate."
 }
