@@ -1,6 +1,6 @@
 {
-  "version": "1.0.2",
-  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.2.zip",
-  "sha256": "1f0b4f06300f18118740335b4655935906921050f924c8c798e717ebe72d4be9",
-  "notes": "Fixes duplicate location/group/user handling and prevents form resubmission on refresh."
+  "version": "1.0.3",
+  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.3.zip",
+  "sha256": "51f324045b99cb7cdd760455a5552a9926fbe4fb060996c1fb538b78a4ea606b",
+  "notes": "Test update: profile pictures for people, group pictures in chat headers, and Seen profile icons while keeping Acknowledge separate."
 }
