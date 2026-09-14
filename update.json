@@ -1,6 +1,6 @@
 {
   "version": "1.0.3",
-  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.3.zip",
-  "sha256": "51f324045b99cb7cdd760455a5552a9926fbe4fb060996c1fb538b78a4ea606b",
-  "notes": "Test update: profile pictures for people, group pictures in chat headers, and Seen profile icons while keeping Acknowledge separate."
+  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.3-build2.zip",
+  "sha256": "5eeaf0b50f33f6ca557c7be4a1d6f635b4ee014413274b5ae7b77b578fe311a4",
+  "notes": "Test update: profile pictures for people, group pictures in chat headers, Seen profile icons, and corrected update package checksum."
 }
