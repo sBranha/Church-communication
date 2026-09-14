@@ -1,0 +1,60 @@
+name: Fix Church Communications 1.0.5 Update Package
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'staging/1.0.5-update2/READY'
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build update-only 1.0.5 package
+        run: |
+          rm -rf /tmp/ccfull /tmp/ccupdate
+          mkdir -p /tmp/ccfull /tmp/ccupdate/Church-Communications/assets /tmp/ccupdate/Church-Communications/lib
+          unzip -q releases/Church-Communications-1.0.5.zip -d /tmp/ccfull
+          SRC=/tmp/ccfull/Church-Communications
+          DST=/tmp/ccupdate/Church-Communications
+          cp "$SRC/admin.php" "$DST/"
+          cp "$SRC/api.php" "$DST/"
+          cp "$SRC/config.php" "$DST/"
+          cp "$SRC/index.php" "$DST/"
+          cp "$SRC/invite.php" "$DST/"
+          cp "$SRC/media.php" "$DST/"
+          cp "$SRC/profile.php" "$DST/"
+          cp "$SRC/team.php" "$DST/"
+          cp "$SRC/sw.js" "$DST/"
+          cp "$SRC/assets/app.css" "$DST/assets/"
+          cp "$SRC/assets/app.js" "$DST/assets/"
+          cp "$SRC/lib/auth.php" "$DST/lib/"
+          cp "$SRC/lib/bootstrap.php" "$DST/lib/"
+          cp "$SRC/lib/migrations.php" "$DST/lib/"
+          cd /tmp/ccupdate
+          zip -qr /tmp/Church-Communications-1.0.5-update2.zip Church-Communications
+          unzip -t /tmp/Church-Communications-1.0.5-update2.zip
+          find /tmp/ccupdate/Church-Communications -name '*.php' -type f -print0 | xargs -0 -n1 php -l
+          grep -F "define('CC_VERSION', '1.0.5');" "$DST/config.php"
+          grep -F "value=\"edit_location\"" "$DST/admin.php"
+          grep -F "value=\"delete_location\"" "$DST/admin.php"
+          SHA=$(sha256sum /tmp/Church-Communications-1.0.5-update2.zip | awk '{print $1}')
+          echo "sha256=$SHA"
+          mkdir -p "$GITHUB_WORKSPACE/releases"
+          cp /tmp/Church-Communications-1.0.5-update2.zip "$GITHUB_WORKSPACE/releases/Church-Communications-1.0.5-update2.zip"
+          cat > "$GITHUB_WORKSPACE/update.json" <<EOF
+          {
+            "version": "1.0.5",
+            "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.5-update2.zip",
+            "sha256": "$SHA",
+            "notes": "Compatibility update package for 1.0.5. Excludes setup.php because setup is only for brand-new installations. Includes Team Leaders, profile pictures, group pictures, Seen-by icons, and edit/delete locations."
+          }
+          EOF
+      - name: Publish corrected 1.0.5 update
+        run: |
+          git config user.name "sBranha"
+          git config user.email "sgbcdb@gmail.com"
+          git add releases/Church-Communications-1.0.5-update2.zip update.json
+          git commit -m "Fix Church Communications 1.0.5 update package" || exit 0
+          git push
