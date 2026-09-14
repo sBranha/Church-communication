@@ -1,0 +1,18 @@
+name: Check Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hash 1.0.4 package
+        run: |
+          echo "PACKAGE_SHA256=$(sha256sum releases/Church-Communications-1.0.4-site-update.zip | awk '{print $1}')"
+          rm -rf /tmp/cc104 && mkdir -p /tmp/cc104
+          unzip -q releases/Church-Communications-1.0.4-site-update.zip -d /tmp/cc104
+          find /tmp/cc104 -type f -print0 | sort -z | xargs -0 sha256sum
