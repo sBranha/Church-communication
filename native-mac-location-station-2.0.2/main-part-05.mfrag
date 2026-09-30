@@ -1,0 +1,89 @@
+
+    NSArray *screens = [NSScreen screens];
+    NSScreen *active = [NSScreen mainScreen] ?: screens.firstObject;
+    for (NSScreen *screen in screens) {
+        BOOL primary = (screen == active);
+        NSPanel *panel = [self buildAlertPanelForMessage:m onScreen:screen primary:primary];
+        [self.alertPanels addObject:panel];
+        if (primary || !self.alertPanel) self.alertPanel = panel;
+    }
+
+    [NSApp activateIgnoringOtherApps:YES];
+    for (NSPanel *panel in self.alertPanels) [panel orderFrontRegardless];
+}
+
+- (void)closeAlertPanel {
+    NSArray *panels = [self.alertPanels copy];
+    for (NSPanel *panel in panels) { [panel orderOut:nil]; [panel close]; }
+    [self.alertPanels removeAllObjects];
+    self.alertPanel = nil;
+    self.alertMessage = nil;
+}
+- (void)alertDismiss:(id)sender { [self closeAlertPanel]; }
+- (void)alertOpen:(id)sender { NSInteger tid = [self.alertMessage[@"thread_id"] integerValue]; [self closeAlertPanel]; [self selectThreadID:tid bringFront:YES]; }
+- (void)alertAckOpen:(id)sender {
+    NSInteger mid = [self.alertMessage[@"id"] integerValue]; NSInteger tid = [self.alertMessage[@"thread_id"] integerValue];
+    [self postJSONAction:@"app_ack" params:@{ @"message_id": @(mid) } token:nil completion:^(NSDictionary *json, NSError *error) {}];
+    [self closeAlertPanel]; [self selectThreadID:tid bringFront:YES];
+}
+
+#pragma mark - Table views
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+    return tableView == self.threadsTable ? (NSInteger)self.threads.count : (NSInteger)self.messages.count;
+}
+
+- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+    if (tableView == self.threadsTable) {
+        NSDictionary *t = self.threads[(NSUInteger)row];
+        NSTableCellView *cell = [tableView makeViewWithIdentifier:@"threadCell" owner:self];
+        if (!cell) {
+            cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0,0,265,60)]; cell.identifier = @"threadCell";
+            NSTextField *tf = [self labelWithFrame:NSMakeRect(10,7,245,46) text:@"" size:14 bold:NO]; tf.tag = 1; tf.textColor = [NSColor whiteColor]; ((NSTextFieldCell *)tf.cell).wraps = YES; [cell addSubview:tf];
+        }
+        NSTextField *tf = [cell viewWithTag:1];
+        NSString *title = [t[@"title"] description] ?: @"Conversation";
+        NSString *preview = [t[@"last_message"] isKindOfClass:[NSDictionary class]] ? [t[@"last_message"][@"body"] description] : @"";
+        if (preview.length > 55) preview = [[preview substringToIndex:52] stringByAppendingString:@"…"];
+        tf.stringValue = preview.length ? [NSString stringWithFormat:@"%@\n%@",title,preview] : title;
+        return cell;
+    }
+    NSDictionary *m = self.messages[(NSUInteger)row];
+    NSTableCellView *cell = [tableView makeViewWithIdentifier:@"messageCell" owner:self];
+    if (!cell) {
+        cell = [[NSTableCellView alloc] initWithFrame:NSMakeRect(0,0,750,72)]; cell.identifier = @"messageCell";
+        NSTextField *tf = [self labelWithFrame:NSMakeRect(10,6,730,60) text:@"" size:14 bold:NO]; tf.tag = 2; tf.textColor = [NSColor whiteColor]; ((NSTextFieldCell *)tf.cell).wraps = YES; tf.cell.lineBreakMode = NSLineBreakByWordWrapping; [cell addSubview:tf];
+    }
+    NSTextField *tf = [cell viewWithTag:2];
+    NSString *sender = [m[@"mine"] boolValue] ? @"You" : ([m[@"sender_name"] description] ?: @"");
+    NSString *priority = [[m[@"priority"] description] lowercaseString];
+    NSString *pfx = [priority isEqualToString:@"urgent"] ? @"URGENT • " : ([priority isEqualToString:@"important"] ? @"IMPORTANT • " : @"");
+    tf.stringValue = [NSString stringWithFormat:@"%@%@\n%@",pfx,sender,[m[@"body"] description] ?: @""];
+    tf.textColor = [priority isEqualToString:@"urgent"] ? [NSColor colorWithCalibratedRed:1.0 green:0.45 blue:0.45 alpha:1.0] : [NSColor whiteColor];
+    return cell;
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    if (notification.object != self.threadsTable) return;
+    NSInteger row = self.threadsTable.selectedRow;
+    if (row < 0 || row >= (NSInteger)self.threads.count) return;
+    self.selectedThread = self.threads[(NSUInteger)row];
+    [self loadMessagesForSelectedThread];
+}
+
+- (void)controlTextDidEndEditing:(NSNotification *)obj {
+    if (obj.object == self.composeField && [[[obj userInfo] objectForKey:@"NSTextMovement"] integerValue] == NSReturnTextMovement) [self sendClicked:nil];
+}
+
+@end
+
+int main(int argc, const char * argv[]) {
+    @autoreleasepool {
+        NSApplication *app = [NSApplication sharedApplication];
+        [app setActivationPolicy:NSApplicationActivationPolicyRegular];
+        CCAppDelegate *delegate = [[CCAppDelegate alloc] init];
+        app.delegate = delegate;
+        [app run];
+    }
+    return 0;
+}
