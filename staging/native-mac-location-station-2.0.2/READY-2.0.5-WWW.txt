@@ -1,0 +1,1 @@
+Trigger verified Mac Location Station 2.0.5 build using direct www endpoint and visible 2.0.5 app name.
