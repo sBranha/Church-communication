@@ -1,0 +1,140 @@
+- (void)showError:(NSString *)message {
+    NSAlert *a = [[NSAlert alloc] init]; a.alertStyle = NSAlertStyleCritical; a.messageText = @"Church Communications"; a.informativeText = message ?: @"An error occurred."; [a addButtonWithTitle:@"OK"]; [a runModal];
+}
+
+#pragma mark - Networking
+
+- (NSMutableURLRequest *)requestForAction:(NSString *)action method:(NSString *)method params:(NSDictionary *)params token:(NSString *)token {
+    NSString *urlString = [NSString stringWithFormat:@"%@?action=%@", CCServer, [self urlEncode:action]];
+    if ([method isEqualToString:@"GET"] && params.count) {
+        NSMutableArray *pairs = [NSMutableArray array];
+        for (NSString *k in params) [pairs addObject:[NSString stringWithFormat:@"%@=%@", [self urlEncode:k], [self urlEncode:[[params objectForKey:k] description]]]];
+        urlString = [urlString stringByAppendingFormat:@"&%@", [pairs componentsJoinedByString:@"&"]];
+    }
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString] cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:20.0];
+    req.HTTPMethod = method;
+    [req setValue:@"ChurchCommunications-Mac-Native/2.0.2" forHTTPHeaderField:@"User-Agent"];
+    if (token.length) [req setValue:token forHTTPHeaderField:@"X-CC-Location-Token"];
+    if ([method isEqualToString:@"POST"]) {
+        NSMutableArray *pairs = [NSMutableArray array];
+        for (NSString *k in params) [pairs addObject:[NSString stringWithFormat:@"%@=%@", [self urlEncode:k], [self urlEncode:[[params objectForKey:k] description]]]];
+        NSData *body = [[pairs componentsJoinedByString:@"&"] dataUsingEncoding:NSUTF8StringEncoding];
+        req.HTTPBody = body;
+        [req setValue:@"application/x-www-form-urlencoded; charset=utf-8" forHTTPHeaderField:@"Content-Type"];
+    }
+    return req;
+}
+
+- (NSString *)urlEncode:(NSString *)s {
+    NSCharacterSet *allowed = [NSCharacterSet URLQueryAllowedCharacterSet];
+    return [s stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
+}
+
+- (void)getJSONAction:(NSString *)action params:(NSDictionary *)params completion:(CCJSONCompletion)completion {
+    NSMutableURLRequest *req = [self requestForAction:action method:@"GET" params:params ?: @{} token:self.token];
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSDictionary *json = nil;
+        if (data.length) { id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]; if ([obj isKindOfClass:[NSDictionary class]]) json = obj; }
+        if (!json && !error) error = [NSError errorWithDomain:@"CC" code:1 userInfo:@{NSLocalizedDescriptionKey:@"The server returned an unreadable response."}];
+        if (completion) completion(json, error);
+    }] resume];
+}
+
+- (void)postJSONAction:(NSString *)action params:(NSDictionary *)params token:(NSString *)token completion:(CCJSONCompletion)completion {
+    NSMutableURLRequest *req = [self requestForAction:action method:@"POST" params:params ?: @{} token:token ?: self.token];
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSDictionary *json = nil;
+        if (data.length) { id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil]; if ([obj isKindOfClass:[NSDictionary class]]) json = obj; }
+        if (!json && !error) error = [NSError errorWithDomain:@"CC" code:2 userInfo:@{NSLocalizedDescriptionKey:@"The server returned an unreadable response."}];
+        if (completion) completion(json, error);
+    }] resume];
+}
+
+- (void)getTextAction:(NSString *)action params:(NSDictionary *)params completion:(CCTextCompletion)completion {
+    NSMutableURLRequest *req = [self requestForAction:action method:@"GET" params:params ?: @{} token:self.token];
+    [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+        if (completion) completion(text, error);
+    }] resume];
+}
+
+#pragma mark - Threads / Messages
+
+- (void)loadTargets {
+    if (!self.token.length) return;
+    [self getJSONAction:@"app_targets" params:@{} completion:^(NSDictionary *json, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!error && [json[@"ok"] boolValue] && [json[@"targets"] isKindOfClass:[NSArray class]]) {
+                [self.targets removeAllObjects]; [self.targets addObjectsFromArray:json[@"targets"]];
+            }
+        });
+    }];
+}
+
+- (void)loadThreads {
+    if (!self.token.length || self.uiPollBusy) return;
+    self.uiPollBusy = YES;
+    [self getJSONAction:@"app_threads" params:@{} completion:^(NSDictionary *json, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.uiPollBusy = NO;
+            if (error || ![json[@"ok"] boolValue]) { self.statusLabel.stringValue = @"Offline — retrying…"; return; }
+            self.statusLabel.stringValue = @"Connected — native Mac location station";
+            NSArray *rows = [json[@"threads"] isKindOfClass:[NSArray class]] ? json[@"threads"] : @[];
+            NSInteger selectedID = [self.selectedThread[@"id"] integerValue];
+            [self.threads removeAllObjects]; [self.threads addObjectsFromArray:rows]; [self.threadsTable reloadData];
+            if (selectedID > 0) {
+                NSInteger idx = [self indexOfThreadID:selectedID];
+                if (idx >= 0) { [self.threadsTable selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)idx] byExtendingSelection:NO]; self.selectedThread = self.threads[(NSUInteger)idx]; }
+            }
+        });
+    }];
+}
+
+- (NSInteger)indexOfThreadID:(NSInteger)threadID {
+    for (NSUInteger i=0;i<self.threads.count;i++) if ([self.threads[i][@"id"] integerValue] == threadID) return (NSInteger)i;
+    return -1;
+}
+
+- (void)loadMessagesForSelectedThread {
+    if (!self.selectedThread) return;
+    NSInteger tid = [self.selectedThread[@"id"] integerValue];
+    [self getJSONAction:@"app_messages" params:@{ @"thread_id": @(tid) } completion:^(NSDictionary *json, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error || ![json[@"ok"] boolValue]) return;
+            NSArray *rows = [json[@"messages"] isKindOfClass:[NSArray class]] ? json[@"messages"] : @[];
+            [self.messages removeAllObjects]; [self.messages addObjectsFromArray:rows]; [self.messagesTable reloadData];
+            NSTextField *title = [self.window.contentView viewWithTag:701];
+            title.stringValue = [json[@"thread"][@"title"] description] ?: [self.selectedThread[@"title"] description] ?: @"Conversation";
+            if (self.messages.count) [self.messagesTable scrollRowToVisible:(NSInteger)self.messages.count-1];
+        });
+    }];
+}
+
+- (void)refreshTick:(NSTimer *)timer {
+    [self loadThreads];
+    if (self.selectedThread) [self loadMessagesForSelectedThread];
+}
+
+- (void)newMessageClicked:(id)sender {
+    [self loadTargets];
+    if (self.targets.count == 0) { [self showError:@"This location does not currently have any available destinations."]; return; }
+    NSAlert *a = [[NSAlert alloc] init];
+    a.messageText = @"Start a Conversation";
+    a.informativeText = @"Choose a location, person, or authorized room.";
+    NSPopUpButton *pop = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0,0,360,30) pullsDown:NO];
+    for (NSDictionary *t in self.targets) [pop addItemWithTitle:[NSString stringWithFormat:@"%@ — %@", t[@"name"] ?: @"Destination", t[@"label"] ?: @""]];
+    a.accessoryView = pop;
+    [a addButtonWithTitle:@"Open"];
+    [a addButtonWithTitle:@"Cancel"];
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+    NSInteger idx = pop.indexOfSelectedItem; if (idx < 0 || idx >= (NSInteger)self.targets.count) return;
+    NSDictionary *t = self.targets[(NSUInteger)idx];
+    [self postJSONAction:@"app_create_thread" params:@{ @"target_type": t[@"type"] ?: @"", @"target_id": t[@"id"] ?: @0 } token:nil completion:^(NSDictionary *json, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error || ![json[@"ok"] boolValue]) { [self showError:json[@"error"] ?: error.localizedDescription]; return; }
+            NSInteger tid = [json[@"thread_id"] integerValue];
+            [self loadThreads];
+            [self selectThreadID:tid bringFront:YES];
+        });
+    }];
+}
