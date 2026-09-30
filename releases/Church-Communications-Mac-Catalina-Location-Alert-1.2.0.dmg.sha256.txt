@@ -1,1 +1,1 @@
-6f45945a4813e9f2b4619374fcbd8e5f296c084bc0bb0402e4c81aae21610c42  releases/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.dmg
+c692f1fdceb16cb5e0a62742ea19c8bcae668b36aa417b147b1f85c9570a58ab  releases/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.dmg
