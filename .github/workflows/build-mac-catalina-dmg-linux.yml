@@ -52,7 +52,7 @@ jobs:
           ISO='/tmp/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.iso'
           OUT='releases/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.dmg'
           genisoimage -hfs -V 'Church Communications' -D -no-pad -r -file-mode 0755 -o "$ISO" /tmp/cc-dmg-root
-          /tmp/libdmg-build/dmg/dmg build "$ISO" "$OUT"
+          /tmp/libdmg-build/dmg/dmg "$ISO" "$OUT"
           test -s "$OUT"
           file "$OUT"
           sha256sum "$OUT" | tee releases/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.dmg.sha256.txt
