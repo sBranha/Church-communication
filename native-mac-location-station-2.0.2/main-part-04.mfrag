@@ -1,0 +1,137 @@
+
+- (void)sendClicked:(id)sender {
+    if (!self.selectedThread) { [self showError:@"Choose a conversation first."]; return; }
+    NSString *body = [self.composeField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (body.length == 0) return;
+    NSString *priority = @"normal"; if (self.priorityPopup.indexOfSelectedItem == 1) priority = @"important"; else if (self.priorityPopup.indexOfSelectedItem == 2) priority = @"urgent";
+    NSInteger tid = [self.selectedThread[@"id"] integerValue];
+    self.sendButton.enabled = NO;
+    [self postJSONAction:@"app_send" params:@{ @"thread_id": @(tid), @"body": body, @"priority": priority } token:nil completion:^(NSDictionary *json, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.sendButton.enabled = YES;
+            if (error || ![json[@"ok"] boolValue]) { [self showError:json[@"error"] ?: error.localizedDescription]; return; }
+            self.composeField.stringValue = @""; [self.priorityPopup selectItemAtIndex:0]; [self loadMessagesForSelectedThread]; [self loadThreads];
+        });
+    }];
+}
+
+- (void)selectThreadID:(NSInteger)threadID bringFront:(BOOL)front {
+    NSInteger idx = [self indexOfThreadID:threadID];
+    if (idx < 0) {
+        [self loadThreads];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ [self selectThreadID:threadID bringFront:front]; });
+        return;
+    }
+    self.selectedThread = self.threads[(NSUInteger)idx];
+    [self.threadsTable selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)idx] byExtendingSelection:NO];
+    [self.threadsTable scrollRowToVisible:idx];
+    [self loadMessagesForSelectedThread];
+    if (front) { [self.window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES]; }
+}
+
+#pragma mark - Always-on-top direct alerts
+
+- (void)initializeAlertCursorIfNeeded {
+    NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+    if ([d objectForKey:CCCursorKey]) return;
+    [self getTextAction:@"poll" params:@{ @"after_id": @0 } completion:^(NSString *text, NSError *error) {
+        if (error || !text.length) return;
+        __block NSInteger cursor = 0;
+        [text enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
+            NSArray *p = [line componentsSeparatedByString:@"\t"];
+            if (p.count >= 2 && [p[0] isEqualToString:@"cursor"]) cursor = [p[1] integerValue];
+        }];
+        if (cursor > 0) { [[NSUserDefaults standardUserDefaults] setInteger:cursor forKey:CCCursorKey]; [[NSUserDefaults standardUserDefaults] synchronize]; }
+    }];
+}
+
+- (void)alertTick:(NSTimer *)timer {
+    if (self.alertPollBusy || !self.token.length) return;
+    self.alertPollBusy = YES;
+    NSInteger cursor = [[NSUserDefaults standardUserDefaults] integerForKey:CCCursorKey];
+    [self getTextAction:@"poll" params:@{ @"after_id": @(cursor) } completion:^(NSString *text, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.alertPollBusy = NO;
+            if (error || !text.length) return;
+            __block NSInteger finalCursor = cursor;
+            NSMutableArray *incoming = [NSMutableArray array];
+            [text enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
+                NSArray *p = [line componentsSeparatedByString:@"\t"];
+                if (p.count >= 2 && [p[0] isEqualToString:@"cursor"]) finalCursor = MAX(finalCursor, [p[1] integerValue]);
+                else if (p.count >= 9 && [p[0] isEqualToString:@"message"]) {
+                    NSDictionary *m = @{ @"id": @([p[1] integerValue]), @"thread_id": @([p[2] integerValue]), @"priority": p[3], @"ttl": @([p[4] integerValue]), @"sender": p[5], @"title": p[6], @"body": p[7] };
+                    [incoming addObject:m]; finalCursor = MAX(finalCursor, [p[1] integerValue]);
+                }
+            }];
+            [[NSUserDefaults standardUserDefaults] setInteger:finalCursor forKey:CCCursorKey]; [[NSUserDefaults standardUserDefaults] synchronize];
+            if (!self.alertPanel && incoming.count) [self showNativeAlert:incoming[0]];
+        });
+    }];
+}
+
+- (NSPanel *)buildAlertPanelForMessage:(NSDictionary *)m onScreen:(NSScreen *)screen primary:(BOOL)primary {
+    NSString *priority = [[m[@"priority"] description] lowercaseString];
+    NSRect rect = NSMakeRect(0,0,680,410);
+    NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable;
+    NSPanel *panel = [[NSPanel alloc] initWithContentRect:rect styleMask:style backing:NSBackingStoreBuffered defer:NO];
+    panel.title = [NSString stringWithFormat:@"Church Communications — %@", self.locationName ?: @"Location"];
+    panel.floatingPanel = YES;
+    panel.hidesOnDeactivate = NO;
+    panel.level = CGWindowLevelForKey(kCGMaximumWindowLevelKey) - 1;
+    panel.collectionBehavior = NSWindowCollectionBehaviorCanJoinAllSpaces |
+                               NSWindowCollectionBehaviorFullScreenAuxiliary |
+                               NSWindowCollectionBehaviorStationary |
+                               NSWindowCollectionBehaviorIgnoresCycle;
+    panel.releasedWhenClosed = NO;
+
+    NSView *v = panel.contentView;
+    v.wantsLayer = YES;
+    v.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.08 alpha:1.0].CGColor;
+
+    NSString *prefix = @"";
+    if ([priority isEqualToString:@"urgent"]) prefix = @"URGENT — ";
+    else if ([priority isEqualToString:@"important"]) prefix = @"IMPORTANT — ";
+
+    NSTextField *h = [self labelWithFrame:NSMakeRect(28,344,620,34)
+                                     text:[NSString stringWithFormat:@"%@MESSAGE FOR %@",prefix,[self.locationName uppercaseString]]
+                                     size:22 bold:YES];
+    h.textColor = [NSColor whiteColor]; [v addSubview:h];
+
+    NSTextField *from = [self labelWithFrame:NSMakeRect(30,308,610,26)
+                                        text:[NSString stringWithFormat:@"From: %@",m[@"sender"] ?: @""]
+                                        size:15 bold:YES];
+    from.textColor = [NSColor colorWithCalibratedRed:1.0 green:0.45 blue:0.45 alpha:1.0]; [v addSubview:from];
+
+    NSTextField *body = [self labelWithFrame:NSMakeRect(30,118,620,176)
+                                        text:m[@"body"] ?: @"New message"
+                                        size:18 bold:NO];
+    body.textColor = [NSColor whiteColor];
+    ((NSTextFieldCell *)body.cell).wraps = YES;
+    ((NSTextFieldCell *)body.cell).lineBreakMode = NSLineBreakByWordWrapping;
+    body.selectable = YES; [v addSubview:body];
+
+    NSButton *dismiss = [self buttonWithFrame:NSMakeRect(30,38,160,44) title:@"Dismiss" action:@selector(alertDismiss:)]; [v addSubview:dismiss];
+    NSButton *open = [self buttonWithFrame:NSMakeRect(250,38,170,44) title:@"Open in App" action:@selector(alertOpen:)]; [v addSubview:open];
+    NSButton *ack = [self buttonWithFrame:NSMakeRect(465,38,185,44) title:@"Acknowledge & Open" action:@selector(alertAckOpen:)]; [v addSubview:ack];
+
+    NSRect sf = screen.frame;
+    NSPoint origin = NSMakePoint(NSMidX(sf) - rect.size.width/2.0,
+                                 NSMidY(sf) - rect.size.height/2.0);
+    [panel setFrameOrigin:origin];
+    [panel orderFrontRegardless];
+    if (primary) [panel makeKeyAndOrderFront:nil];
+    return panel;
+}
+
+- (void)showNativeAlert:(NSDictionary *)m {
+    self.alertMessage = m;
+    NSString *priority = [[m[@"priority"] description] lowercaseString];
+    NSSound *sound = nil;
+    if ([priority isEqualToString:@"urgent"]) sound = [NSSound soundNamed:@"Sosumi"];
+    else if ([priority isEqualToString:@"important"]) sound = [NSSound soundNamed:@"Ping"];
+    else sound = [NSSound soundNamed:@"Glass"];
+    [sound play];
+
+    [self closeAlertPanel];
+    self.alertMessage = m;
+    if (!self.alertPanels) self.alertPanels = [NSMutableArray array];
