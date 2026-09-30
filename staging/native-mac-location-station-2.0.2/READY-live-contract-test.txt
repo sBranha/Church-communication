@@ -1,0 +1,1 @@
+Run live pairing API contract test before any further Mac installer is handed to the user.
