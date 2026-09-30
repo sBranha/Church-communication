@@ -1,0 +1,139 @@
+    chatTitle.textColor = [NSColor whiteColor];
+    chatTitle.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+    [main addSubview:chatTitle];
+
+    self.messagesTable = [[NSTableView alloc] initWithFrame:NSMakeRect(0,0,760,490)];
+    NSTableColumn *mc = [[NSTableColumn alloc] initWithIdentifier:@"message"];
+    mc.width = 760;
+    [self.messagesTable addTableColumn:mc];
+    self.messagesTable.headerView = nil;
+    self.messagesTable.delegate = self;
+    self.messagesTable.dataSource = self;
+    self.messagesTable.rowHeight = 72;
+    self.messagesTable.backgroundColor = [NSColor clearColor];
+    self.messagesTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;
+    self.messagesScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(18, 104, 780, 496)];
+    self.messagesScroll.documentView = self.messagesTable;
+    self.messagesScroll.hasVerticalScroller = YES;
+    self.messagesScroll.drawsBackground = NO;
+    self.messagesScroll.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [main addSubview:self.messagesScroll];
+
+    self.composeField = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 48, 560, 38)];
+    self.composeField.placeholderString = @"Type a message to this location/room…";
+    self.composeField.font = [NSFont systemFontOfSize:15];
+    self.composeField.delegate = self;
+    self.composeField.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
+    [main addSubview:self.composeField];
+
+    self.priorityPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(590, 49, 105, 36) pullsDown:NO];
+    [self.priorityPopup addItemsWithTitles:@[@"Normal",@"Important",@"Urgent"]];
+    self.priorityPopup.autoresizingMask = NSViewMinXMargin | NSViewMaxYMargin;
+    [main addSubview:self.priorityPopup];
+
+    self.sendButton = [self buttonWithFrame:NSMakeRect(704, 48, 92, 38) title:@"Send" action:@selector(sendClicked:)];
+    self.sendButton.autoresizingMask = NSViewMinXMargin | NSViewMaxYMargin;
+    [main addSubview:self.sendButton];
+
+    NSTextField *note = [self labelWithFrame:NSMakeRect(22, 18, 760, 20) text:@"Direct location messages automatically disappear after two hours." size:11 bold:NO];
+    note.textColor = [NSColor colorWithCalibratedWhite:0.6 alpha:1.0];
+    note.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
+    [main addSubview:note];
+}
+
+- (NSTextField *)labelWithFrame:(NSRect)frame text:(NSString *)text size:(CGFloat)size bold:(BOOL)bold {
+    NSTextField *l = [[NSTextField alloc] initWithFrame:frame];
+    l.stringValue = text ?: @"";
+    l.bezeled = NO;
+    l.drawsBackground = NO;
+    l.editable = NO;
+    l.selectable = NO;
+    l.font = bold ? [NSFont boldSystemFontOfSize:size] : [NSFont systemFontOfSize:size];
+    return l;
+}
+
+- (NSButton *)buttonWithFrame:(NSRect)frame title:(NSString *)title action:(SEL)action {
+    NSButton *b = [[NSButton alloc] initWithFrame:frame];
+    b.title = title;
+    b.bezelStyle = NSBezelStyleRounded;
+    b.target = self;
+    b.action = action;
+    return b;
+}
+
+- (void)startLocationStation {
+    self.locationLabel.stringValue = [NSString stringWithFormat:@"CHURCH COMMUNICATIONS — %@", [self.locationName uppercaseString]];
+    self.statusLabel.stringValue = @"Connecting…";
+    [self.window makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+    [self installLoginAgentIfPossible];
+    [self loadThreads];
+    [self loadTargets];
+    [self initializeAlertCursorIfNeeded];
+    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:3.0 target:self selector:@selector(refreshTick:) userInfo:nil repeats:YES];
+    self.alertTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 target:self selector:@selector(alertTick:) userInfo:nil repeats:YES];
+}
+
+- (void)stopTimers {
+    [self.refreshTimer invalidate]; self.refreshTimer = nil;
+    [self.alertTimer invalidate]; self.alertTimer = nil;
+}
+
+- (void)showPairingDialog {
+    NSAlert *a = [[NSAlert alloc] init];
+    a.messageText = @"Pair This Mac to a Church Location";
+    a.informativeText = @"On the Church Communications location screen, click “ Mac App” and enter the 8-digit setup code shown there.";
+    NSTextField *field = [[NSTextField alloc] initWithFrame:NSMakeRect(0,0,280,28)];
+    field.placeholderString = @"8-digit setup code";
+    a.accessoryView = field;
+    [a addButtonWithTitle:@"Pair"];
+    [a addButtonWithTitle:@"Cancel"];
+    [NSApp activateIgnoringOtherApps:YES];
+    NSModalResponse r = [a runModal];
+    if (r != NSAlertFirstButtonReturn) return;
+    NSString *digits = [[field.stringValue componentsSeparatedByCharactersInSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]] componentsJoinedByString:@""];
+    if (digits.length != 8) { [self showError:@"The setup code must be exactly 8 digits."]; [self showPairingDialog]; return; }
+    [self postJSONAction:@"pair_json" params:@{ @"code": digits } token:nil completion:^(NSDictionary *json, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error || ![json[@"ok"] boolValue]) { [self showError:json[@"error"] ?: error.localizedDescription ?: @"Pairing failed."]; [self showPairingDialog]; return; }
+            self.token = [json[@"token"] description];
+            self.locationName = [json[@"location"] description] ?: @"Location";
+            self.locationID = [json[@"location_id"] integerValue];
+            NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+            [d setObject:self.token forKey:CCTokenKey];
+            [d setObject:self.locationName forKey:CCLocationNameKey];
+            [d setInteger:self.locationID forKey:CCLocationIDKey];
+            [d removeObjectForKey:CCCursorKey];
+            [d synchronize];
+            [self startLocationStation];
+        });
+    }];
+}
+
+- (void)repairClicked:(id)sender {
+    NSAlert *a = [[NSAlert alloc] init];
+    a.messageText = @"Pair this Mac to a different location?";
+    a.informativeText = @"This will disconnect the current location from this Mac and ask for a new setup code.";
+    [a addButtonWithTitle:@"Pair Another"];
+    [a addButtonWithTitle:@"Cancel"];
+    if ([a runModal] != NSAlertFirstButtonReturn) return;
+    [self stopTimers];
+    self.token = nil; self.locationName = @"Location"; self.locationID = 0;
+    NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+    [d removeObjectForKey:CCTokenKey]; [d removeObjectForKey:CCLocationNameKey]; [d removeObjectForKey:CCLocationIDKey]; [d removeObjectForKey:CCCursorKey]; [d synchronize];
+    [self.threads removeAllObjects]; [self.messages removeAllObjects]; [self.threadsTable reloadData]; [self.messagesTable reloadData];
+    [self showPairingDialog];
+}
+
+- (void)installLoginAgentIfPossible {
+    NSString *exe = [[NSBundle mainBundle] executablePath];
+    if (![exe hasPrefix:@"/Applications/"]) return;
+    NSString *agents = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/LaunchAgents"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:agents withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *plistPath = [agents stringByAppendingPathComponent:@"com.churchcommunications.locationstation.plist"];
+    NSDictionary *plist = @{ @"Label": @"com.churchcommunications.locationstation", @"ProgramArguments": @[exe], @"RunAtLoad": @YES, @"KeepAlive": @NO };
+    [plist writeToFile:plistPath atomically:YES];
+    chmod([plistPath fileSystemRepresentation], 0600);
+    NSTask *unload = [[NSTask alloc] init]; unload.launchPath = @"/bin/launchctl"; unload.arguments = @[@"unload", plistPath]; unload.standardOutput = [NSFileHandle fileHandleWithNullDevice]; unload.standardError = [NSFileHandle fileHandleWithNullDevice]; @try {[unload launch]; [unload waitUntilExit];} @catch(NSException *e) {}
+    NSTask *load = [[NSTask alloc] init]; load.launchPath = @"/bin/launchctl"; load.arguments = @[@"load", plistPath]; load.standardOutput = [NSFileHandle fileHandleWithNullDevice]; load.standardError = [NSFileHandle fileHandleWithNullDevice]; @try {[load launch];} @catch(NSException *e) {}
+}
