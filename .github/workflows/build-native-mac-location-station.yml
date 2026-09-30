@@ -21,11 +21,11 @@ jobs:
           set -euo pipefail
           cat staging/native-mac-location-station-2.0.2/part-*.b64 | base64 -D > /tmp/native-mac-source.zip
           ACTUAL=$(shasum -a 256 /tmp/native-mac-source.zip | awk '{print $1}')
-          EXPECTED=41ae48dc35ab566b6495fc5b9135cf261ea0c47d6f61f0fe2624b7a61af3f531
+          EXPECTED=e15e9f28d3c454992c217de046a0dbb0621db81c54410b4b25cb2f760c57fcc5
           SIZE=$(stat -f%z /tmp/native-mac-source.zip)
           echo "source sha256=$ACTUAL size=$SIZE"
           test "$ACTUAL" = "$EXPECTED"
-          test "$SIZE" = '20723'
+          test "$SIZE" = '20594'
           unzip -t /tmp/native-mac-source.zip
           rm -rf /tmp/native-src
           mkdir -p /tmp/native-src
@@ -35,11 +35,11 @@ jobs:
           test -f /tmp/native-src/AppIcon-1024.png
           plutil -lint /tmp/native-src/Info.plist
 
-          # Final source corrections and 2.0.3 version bump before compilation.
+          # Final compiler fix and 2.0.3 version bump.
           sed -i '' 's/newMessageButton/composeButton/g' /tmp/native-src/main.m
-          sed -i '' 's#ChurchCommunications-Mac-Native/2.0.2#ChurchCommunications-Mac-Native/2.0.3#g' /tmp/native-src/main.m
-          sed -i '' 's#<string>2.0.2</string>#<string>2.0.3</string>#g' /tmp/native-src/Info.plist
-          sed -i '' 's#<string>202</string>#<string>203</string>#g' /tmp/native-src/Info.plist
+          sed -i '' 's#ChurchCommunications-Mac-Native/2.0.1#ChurchCommunications-Mac-Native/2.0.3#g' /tmp/native-src/main.m
+          sed -i '' 's#<string>2.0.1</string>#<string>2.0.3</string>#g' /tmp/native-src/Info.plist
+          sed -i '' 's#<string>200</string>#<string>203</string>#g' /tmp/native-src/Info.plist
 
           grep -q 'composeButton' /tmp/native-src/main.m
           if grep -q 'newMessageButton' /tmp/native-src/main.m; then exit 1; fi
