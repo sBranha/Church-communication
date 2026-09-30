@@ -1,0 +1,1 @@
+Build only if the live non-www Church Communications pairing API passes the JSON contract test.
