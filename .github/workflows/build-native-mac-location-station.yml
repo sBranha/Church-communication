@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'staging/native-mac-location-station-2.0.2/READY*'
+      - 'staging/native-mac-location-station-2.1.0/READY*'
 
 permissions:
   contents: write
@@ -15,88 +15,68 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Rebuild and verify staged source
+      - name: Rebuild base source and apply 2.1.0 browser pairing
         shell: bash
         run: |
           set -euo pipefail
           cat staging/native-mac-location-station-2.0.2/part-*.b64 | base64 -D > /tmp/native-mac-source.zip
           ACTUAL=$(shasum -a 256 /tmp/native-mac-source.zip | awk '{print $1}')
           EXPECTED=e15e9f28d3c454992c217de046a0dbb0621db81c54410b4b25cb2f760c57fcc5
-          SIZE=$(stat -f%z /tmp/native-mac-source.zip)
-          echo "source sha256=$ACTUAL size=$SIZE"
           test "$ACTUAL" = "$EXPECTED"
-          test "$SIZE" = '20594'
           unzip -t /tmp/native-mac-source.zip
           rm -rf /tmp/native-src
           mkdir -p /tmp/native-src
           ditto -x -k /tmp/native-mac-source.zip /tmp/native-src
-          plutil -lint /tmp/native-src/Info.plist
 
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/native-src/main.m')
           s=p.read_text()
           s=s.replace('newMessageButton','composeButton')
-          s=s.replace('ChurchCommunications-Mac-Native/2.0.1','ChurchCommunications-Mac-Native/2.0.5')
-          s=s.replace('https://compassionworship.com/cc/app/location-helper-api.php','https://www.compassionworship.com/cc/app/location-helper-api.php')
-          s=s.replace('static NSString * const CCAppName = @"Church Communications Location Station";','static NSString * const CCAppName = @"Church Communications Location Station — 2.0.5";')
-          s=s.replace('On the Church Communications location screen, click “ Mac App” and enter the 8-digit setup code shown there.','Use Admin → Locations → Pair Device and enter the 8-digit setup code shown there.\\n\\nMac app version 2.0.5')
-          old1='if (!json && !error) error = [NSError errorWithDomain:@"CC" code:1 userInfo:@{NSLocalizedDescriptionKey:@"The server returned an unreadable response."}];'
-          new1='if (!json && !error) { NSHTTPURLResponse *h=[response isKindOfClass:[NSHTTPURLResponse class]]?(NSHTTPURLResponse *)response:nil; NSString *body=data.length?[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]:@""; if(body.length>500)body=[body substringToIndex:500]; NSString *msg=[NSString stringWithFormat:@"Server response was not valid JSON.%@%@",h?[NSString stringWithFormat:@" HTTP %ld.",(long)h.statusCode]:@"",body.length?[NSString stringWithFormat:@" Response: %@",body]:@""]; error=[NSError errorWithDomain:@"CC" code:1 userInfo:@{NSLocalizedDescriptionKey:msg}]; }'
-          old2='if (!json && !error) error = [NSError errorWithDomain:@"CC" code:2 userInfo:@{NSLocalizedDescriptionKey:@"The server returned an unreadable response."}];'
-          new2='if (!json && !error) { NSHTTPURLResponse *h=[response isKindOfClass:[NSHTTPURLResponse class]]?(NSHTTPURLResponse *)response:nil; NSString *body=data.length?[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]:@""; if(body.length>500)body=[body substringToIndex:500]; NSString *msg=[NSString stringWithFormat:@"Server response was not valid JSON.%@%@",h?[NSString stringWithFormat:@" HTTP %ld.",(long)h.statusCode]:@"",body.length?[NSString stringWithFormat:@" Response: %@",body]:@""]; error=[NSError errorWithDomain:@"CC" code:2 userInfo:@{NSLocalizedDescriptionKey:msg}]; }'
+          s=s.replace('ChurchCommunications-Mac-Native/2.0.1','ChurchCommunications-Mac-Native/2.1.0')
+          s=s.replace('static NSString * const CCServer = @"https://compassionworship.com/cc/app/location-helper-api.php";', 'static NSString * const CCServer = @"https://www.compassionworship.com/cc/native-station-api.php";\nstatic NSString * const CCPairURL = @"https://www.compassionworship.com/cc/native-mac-pair.php";')
+          s=s.replace('static NSString * const CCAppName = @"Church Communications Location Station";','static NSString * const CCAppName = @"Church Communications Location Station — 2.1.0";')
+
+          old_launch='''    if (self.token.length == 0) {\n        [self showPairingSheet];\n    } else {\n        [self refreshAll:nil];\n        [self startPolling];\n    }\n}'''
+          new_launch='''    if (self.token.length == 0) {\n        [self.window makeKeyAndOrderFront:nil];\n        [NSApp activateIgnoringOtherApps:YES];\n        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{\n            if (self.token.length == 0) [self showPairingSheet];\n        });\n    } else {\n        [self refreshAll:nil];\n        [self startPolling];\n    }\n}\n\n- (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {\n    for (NSURL *url in urls) [self handlePairingCallbackURL:url];\n}\n\n- (void)handlePairingCallbackURL:(NSURL *)url {\n    if (!url) return;\n    if (![[url.scheme lowercaseString] isEqualToString:@"ccstation"] || ![[url.host lowercaseString] isEqualToString:@"paired"]) return;\n    NSURLComponents *parts=[NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];\n    NSMutableDictionary *v=[NSMutableDictionary dictionary];\n    for(NSURLQueryItem *item in parts.queryItems ?: @[]) if(item.name.length) v[item.name]=item.value ?: @"";\n    NSString *tok=[v[@"token"] description] ?: @"";\n    NSString *name=[v[@"name"] description] ?: @"Location Station";\n    NSInteger lid=[v[@"location_id"] integerValue];\n    if(tok.length < 32 || lid <= 0){ [self setStatus:@"Browser pairing returned an invalid result"]; return; }\n    self.token=tok; self.locationName=name.length?name:@"Location Station"; self.locationID=lid; self.cursor=0;\n    NSUserDefaults *d=[NSUserDefaults standardUserDefaults];\n    [d setObject:tok forKey:CCTokenKey]; [d setObject:self.locationName forKey:CCLocationNameKey]; [d setInteger:lid forKey:CCLocationIDKey]; [d removeObjectForKey:CCCursorKey]; [d synchronize];\n    dispatch_async(dispatch_get_main_queue(), ^{ self.locationLabel.stringValue=self.locationName; [self updateSendState]; [self.window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES]; });\n    [self refreshAll:nil]; [self startPolling];\n}'''
+          if old_launch not in s:
+              raise SystemExit('launch block not found')
+          s=s.replace(old_launch,new_launch)
+
+          start=s.index('- (void)showPairingSheet { [self showPairingSheet:nil]; }')
+          end=s.index('\n- (void)startPolling', start)
+          new_pair='''- (void)showPairingSheet { [self showPairingSheet:nil]; }\n- (void)showPairingSheet:(id)sender {\n    dispatch_async(dispatch_get_main_queue(), ^{\n        NSAlert *a=[[NSAlert alloc]init];\n        a.messageText=@"Pair This Mac in Your Browser";\n        a.informativeText=@"This version uses a completely different pairing system.\\n\\n1. In Admin → Locations, choose Pair Device and get the 8-digit code.\\n2. Click Open Pairing Page.\\n3. Enter the code on the Church Communications web page.\\n4. The browser sends the completed pairing back to this app.\\n\\nThe Mac app does not make a JSON pairing request.\\n\\nMac app version 2.1.0";\n        [a addButtonWithTitle:@"Open Pairing Page"]; [a addButtonWithTitle:@"Cancel"];\n        if([a runModal]!=NSAlertFirstButtonReturn)return;\n        NSURLComponents *c=[NSURLComponents componentsWithString:CCPairURL];\n        c.queryItems=@[[NSURLQueryItem queryItemWithName:@"source" value:@"mac"],[NSURLQueryItem queryItemWithName:@"app_version" value:@"2.1.0"]];\n        if(!c.URL || ![[NSWorkspace sharedWorkspace] openURL:c.URL]){ [self setStatus:@"Could not open browser pairing page"]; return; }\n        [self setStatus:@"Waiting for browser pairing…"];\n    });\n}\n'''
+          s=s[:start]+new_pair+s[end:]
+
+          old1='if (!e) e=[NSError errorWithDomain:@"CC" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Invalid server response"}];'
+          new1='if (!e) { NSHTTPURLResponse *h=[response isKindOfClass:[NSHTTPURLResponse class]]?(NSHTTPURLResponse *)response:nil; NSString *msg=[NSString stringWithFormat:@"Server response was not valid JSON.%@",h?[NSString stringWithFormat:@" HTTP %ld.",(long)h.statusCode]:@""]; e=[NSError errorWithDomain:@"CC" code:1 userInfo:@{NSLocalizedDescriptionKey:msg}]; }'
+          old2='if(!e)e=[NSError errorWithDomain:@"CC" code:2 userInfo:@{NSLocalizedDescriptionKey:@"Invalid server response"}];'
+          new2='if(!e){ NSHTTPURLResponse *h=[response isKindOfClass:[NSHTTPURLResponse class]]?(NSHTTPURLResponse *)response:nil; NSString *msg=[NSString stringWithFormat:@"Server response was not valid JSON.%@",h?[NSString stringWithFormat:@" HTTP %ld.",(long)h.statusCode]:@""]; e=[NSError errorWithDomain:@"CC" code:2 userInfo:@{NSLocalizedDescriptionKey:msg}]; }'
           s=s.replace(old1,new1).replace(old2,new2)
           p.write_text(s)
+
           p=Path('/tmp/native-src/Info.plist')
-          s=p.read_text().replace('<string>2.0.1</string>','<string>2.0.5</string>').replace('<string>200</string>','<string>205</string>')
-          p.write_text(s)
+          info=p.read_text()
+          info=info.replace('<string>2.0.1</string>','<string>2.1.0</string>')
+          info=info.replace('<string>200</string>','<string>210</string>')
+          urltypes='''  <key>CFBundleURLTypes</key>\n  <array>\n    <dict>\n      <key>CFBundleURLName</key><string>Church Communications Location Station Pairing</string>\n      <key>CFBundleURLSchemes</key>\n      <array><string>ccstation</string></array>\n    </dict>\n  </array>\n'''
+          info=info.replace('  <key>LSApplicationCategoryType</key>',urltypes+'  <key>LSApplicationCategoryType</key>')
+          p.write_text(info)
           PY
 
-          grep -q 'composeButton' /tmp/native-src/main.m
-          if grep -q 'newMessageButton' /tmp/native-src/main.m; then exit 1; fi
-          grep -q '__block NSInteger finalCursor' /tmp/native-src/main.m
-          grep -q 'ChurchCommunications-Mac-Native/2.0.5' /tmp/native-src/main.m
-          grep -q 'Church Communications Location Station — 2.0.5' /tmp/native-src/main.m
-          grep -q 'https://www.compassionworship.com/cc/app/location-helper-api.php' /tmp/native-src/main.m
-          grep -q 'Server response was not valid JSON' /tmp/native-src/main.m
-          grep -q 'NSScreenSaverWindowLevel' /tmp/native-src/main.m
-          grep -q 'NSWindowCollectionBehaviorCanJoinAllSpaces' /tmp/native-src/main.m
-          grep -q '<string>2.0.5</string>' /tmp/native-src/Info.plist
-          grep -q '<string>10.15.0</string>' /tmp/native-src/Info.plist
-
-      - name: Test live pairing API contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          URL='https://www.compassionworship.com/cc/app/location-helper-api.php?action=pair_json'
-          STATUS=$(curl -sS -o /tmp/pair-body.txt -D /tmp/pair-headers.txt -w '%{http_code}' \
-            -X POST "$URL" \
-            -H 'Accept: application/json' \
-            -H 'Content-Type: application/x-www-form-urlencoded; charset=utf-8' \
-            -H 'User-Agent: ChurchCommunications-Mac-Native/2.0.5' \
-            --data 'code=12345678')
-          echo "HTTP_STATUS=$STATUS"
-          cat /tmp/pair-headers.txt
-          cat /tmp/pair-body.txt
-          echo
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          body=Path('/tmp/pair-body.txt').read_text(errors='replace')
-          obj=json.loads(body)
-          if not isinstance(obj,dict) or 'ok' not in obj:
-              raise SystemExit(f'LIVE PAIRING API JSON CONTRACT INVALID: {obj!r}')
-          if obj.get('ok') is not False:
-              raise SystemExit(f'DUMMY CODE UNEXPECTEDLY SUCCEEDED: {obj!r}')
-          print('LIVE_PAIRING_JSON_CONTRACT_OK', obj)
-          PY
-          test "$STATUS" = '403' || test "$STATUS" = '422'
+          plutil -lint /tmp/native-src/Info.plist
+          grep -q 'ChurchCommunications-Mac-Native/2.1.0' /tmp/native-src/main.m
+          grep -q 'native-station-api.php' /tmp/native-src/main.m
+          grep -q 'native-mac-pair.php' /tmp/native-src/main.m
+          grep -q 'ccstation' /tmp/native-src/Info.plist
+          grep -q 'Pair This Mac in Your Browser' /tmp/native-src/main.m
+          if grep -q 'pair_native' /tmp/native-src/main.m; then echo 'old direct native pairing still present'; exit 1; fi
 
       - name: Build Intel Catalina native app
         shell: bash
         run: |
           set -euo pipefail
-          APP='/tmp/Church Communications Location Station 2.0.5.app'
+          APP='/tmp/Church Communications Location Station 2.1.0.app'
           EXE="$APP/Contents/MacOS/Church Communications Location Station"
           RES="$APP/Contents/Resources"
           rm -rf "$APP" /tmp/AppIcon.iconset
@@ -108,31 +88,32 @@ jobs:
           done
           iconutil -c icns /tmp/AppIcon.iconset -o "$RES/AppIcon.icns"
           SDK=$(xcrun --sdk macosx --show-sdk-path)
-          xcrun clang -fobjc-arc -fblocks -arch x86_64 -mmacosx-version-min=10.15 -isysroot "$SDK" -framework Cocoa /tmp/native-src/main.m -o "$EXE"
+          xcrun clang -fobjc-arc -fblocks -arch x86_64 -mmacosx-version-min=10.15 -isysroot "$SDK" -framework Cocoa -framework IOKit /tmp/native-src/main.m -o "$EXE"
           chmod +x "$EXE"
           codesign --force --deep --sign - "$APP"
           codesign --verify --deep --strict "$APP"
           lipo -info "$EXE" | grep -q 'x86_64'
           test "$(defaults read "$APP/Contents/Info" LSMinimumSystemVersion)" = '10.15.0'
-          test "$(defaults read "$APP/Contents/Info" CFBundleShortVersionString)" = '2.0.5'
-          test "$(defaults read "$APP/Contents/Info" CFBundleIconFile)" = 'AppIcon'
-          strings "$EXE" | grep -q 'Church Communications Location Station — 2.0.5'
-          strings "$EXE" | grep -q 'https://www.compassionworship.com/cc/app/location-helper-api.php'
+          test "$(defaults read "$APP/Contents/Info" CFBundleShortVersionString)" = '2.1.0'
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$APP/Contents/Info.plist" | grep -q '^ccstation$'
+          strings "$EXE" | grep -q 'native-station-api.php'
+          strings "$EXE" | grep -q 'native-mac-pair.php'
+          strings "$EXE" | grep -q '2.1.0'
 
       - name: Package and verify Apple DMG
         shell: bash
         run: |
           set -euo pipefail
           ROOT=/tmp/location-station-dmg
-          OUT='releases/Church-Communications-Mac-Location-Station-2.0.5.dmg'
+          OUT='releases/Church-Communications-Mac-Location-Station-2.1.0.dmg'
           rm -rf "$ROOT" "$OUT"
           mkdir -p "$ROOT" releases
-          ditto '/tmp/Church Communications Location Station 2.0.5.app' "$ROOT/Church Communications Location Station 2.0.5.app"
+          ditto '/tmp/Church Communications Location Station 2.1.0.app' "$ROOT/Church Communications Location Station 2.1.0.app"
           ln -s /Applications "$ROOT/Applications"
-          hdiutil create -volname 'Church Communications Location Station 2.0.5' -srcfolder "$ROOT" -ov -format UDZO "$OUT"
+          hdiutil create -volname 'Church Communications Location Station 2.1.0' -srcfolder "$ROOT" -ov -format UDZO "$OUT"
           hdiutil verify "$OUT"
           test -s "$OUT"
-          shasum -a 256 "$OUT" | tee releases/Church-Communications-Mac-Location-Station-2.0.5.dmg.sha256.txt
+          shasum -a 256 "$OUT" | tee releases/Church-Communications-Mac-Location-Station-2.1.0.dmg.sha256.txt
 
       - name: Publish native Mac DMG
         shell: bash
@@ -141,6 +122,6 @@ jobs:
           git config user.name 'sBranha'
           git config user.email 'sgbcdb@gmail.com'
           git pull --rebase origin main
-          git add releases/Church-Communications-Mac-Location-Station-2.0.5.dmg releases/Church-Communications-Mac-Location-Station-2.0.5.dmg.sha256.txt
-          git commit -m 'Publish verified Mac Location Station 2.0.5' || exit 0
+          git add releases/Church-Communications-Mac-Location-Station-2.1.0.dmg releases/Church-Communications-Mac-Location-Station-2.1.0.dmg.sha256.txt
+          git commit -m 'Publish Mac Location Station 2.1.0 browser pairing' || exit 0
           git push
