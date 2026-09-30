@@ -39,8 +39,8 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y genisoimage cmake build-essential zlib1g-dev git
-          git clone --depth 1 https://github.com/planetbeing/libdmg-hfsplus.git /tmp/libdmg-hfsplus
-          cmake -S /tmp/libdmg-hfsplus -B /tmp/libdmg-build -DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          git clone --depth 1 https://github.com/fanquake/libdmg-hfsplus.git /tmp/libdmg-hfsplus
+          cmake -S /tmp/libdmg-hfsplus -B /tmp/libdmg-build
           cmake --build /tmp/libdmg-build -j2
           test -x /tmp/libdmg-build/dmg/dmg
 
