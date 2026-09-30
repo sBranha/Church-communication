@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'staging/native-mac-location-station-2.0.1/READY*'
+      - 'staging/native-mac-location-station-2.0.2/READY*'
 
 permissions:
   contents: write
@@ -19,9 +19,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat staging/native-mac-location-station-2.0.1/part-*.b64 | base64 -D > /tmp/native-mac-source.zip
+          cat staging/native-mac-location-station-2.0.2/part-*.b64 | base64 -D > /tmp/native-mac-source.zip
           ACTUAL=$(shasum -a 256 /tmp/native-mac-source.zip | awk '{print $1}')
-          EXPECTED=775aa58185213612bb050f08ea91661ff6de43cbaa238a3e51290dcb8b5add67
+          EXPECTED=e15e9f28d3c454992c217de046a0dbb0621db81c54410b4b25cb2f760c57fcc5
           echo "source sha256=$ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
           rm -rf /tmp/native-src
