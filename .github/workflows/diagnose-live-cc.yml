@@ -1,0 +1,48 @@
+name: Diagnose Live Church Communications
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-live-cc.yml'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe live Church Communications paths
+        shell: bash
+        run: |
+          set -u
+          paths=(
+            '/cc/'
+            '/cc/index.php'
+            '/cc/pair.php'
+            '/cc/app/'
+            '/cc/app/index.php'
+            '/cc/app/api.php'
+            '/cc/app/location-helper-api.php?action=pair_json'
+          )
+          for host in compassionworship.com www.compassionworship.com; do
+            echo "===== HOST $host ====="
+            for p in "${paths[@]}"; do
+              url="https://$host$p"
+              echo "--- $url"
+              curl -sS --max-time 15 -o /tmp/body -D /tmp/hdr -w 'status=%{http_code} final=%{url_effective} type=%{content_type}\n' "$url" || true
+              grep -iE '^(HTTP/|location:|content-type:)' /tmp/hdr | tail -n 8 || true
+              head -c 220 /tmp/body | tr '\n' ' ' || true
+              echo
+              echo
+            done
+          done
+
+          echo '===== FOLLOW REDIRECTS ====='
+          for p in '/cc/' '/cc/app/index.php' '/cc/app/api.php' '/cc/app/location-helper-api.php?action=pair_json'; do
+            url="https://compassionworship.com$p"
+            echo "--- $url"
+            curl -sS -L --max-time 20 -o /tmp/body -D /tmp/hdr -w 'status=%{http_code} final=%{url_effective} type=%{content_type}\n' "$url" || true
+            grep -iE '^(HTTP/|location:|content-type:)' /tmp/hdr | tail -n 12 || true
+            head -c 300 /tmp/body | tr '\n' ' ' || true
+            echo
+            echo
+          done
