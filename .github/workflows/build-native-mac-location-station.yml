@@ -88,9 +88,10 @@ jobs:
           test "$(defaults read "$APP/Contents/Info" LSMinimumSystemVersion)" = '10.15.0'
           test "$(defaults read "$APP/Contents/Info" CFBundleShortVersionString)" = '2.1.0'
           /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$APP/Contents/Info.plist" | grep -q '^ccstation$'
-          strings "$EXE" | grep -q 'native-station-api.php'
-          strings "$EXE" | grep -q 'native-mac-pair.php'
-          strings "$EXE" | grep -q 'Pair This Mac in Your Browser'
+          strings "$EXE" > /tmp/location-station-strings.txt
+          grep -q 'native-station-api.php' /tmp/location-station-strings.txt
+          grep -q 'native-mac-pair.php' /tmp/location-station-strings.txt
+          grep -q 'Pair This Mac in Your Browser' /tmp/location-station-strings.txt
 
       - name: Package and verify DMG
         shell: bash
