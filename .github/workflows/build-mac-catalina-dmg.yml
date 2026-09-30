@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'staging/mac-catalina-dmg-120/READY*'
+      - 'staging/mac-catalina-dmg-120c/READY*'
 
 permissions:
   contents: write
@@ -19,7 +19,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat staging/mac-catalina-dmg-120/part-*.b64 | base64 -D > /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.zip
+          cat staging/mac-catalina-dmg-120c/part-*.b64 | base64 -D > /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.zip
           ACTUAL=$(shasum -a 256 /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.zip | awk '{print $1}')
           EXPECTED=3f8e03a127285ed73edcb20f77c50d217d4626f87d8b04ac1b2824e557722f48
           echo "zip sha256=$ACTUAL"
