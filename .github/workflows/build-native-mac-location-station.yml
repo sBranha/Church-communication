@@ -34,6 +34,9 @@ jobs:
           grep -q 'newMessageButton' /tmp/native-src/main.m
           grep -q '__block NSInteger finalCursor' /tmp/native-src/main.m
           grep -q 'ChurchCommunications-Mac-Native/2.0.1' /tmp/native-src/main.m
+          sed -i '' 's/newMessageButton/composeButton/g' /tmp/native-src/main.m
+          grep -q 'composeButton' /tmp/native-src/main.m
+          if grep -q 'newMessageButton' /tmp/native-src/main.m; then exit 1; fi
 
       - name: Build Intel Catalina native app
         shell: bash
