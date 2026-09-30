@@ -1,0 +1,89 @@
+name: Build Native Mac Location Station
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'staging/native-mac-location-station-2.0.0/READY'
+
+permissions:
+  contents: write
+
+jobs:
+  build-native-mac:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rebuild staged source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat staging/native-mac-location-station-2.0.0/part-*.b64 | base64 -D > /tmp/native-mac-source.zip
+          ACTUAL=$(shasum -a 256 /tmp/native-mac-source.zip | awk '{print $1}')
+          EXPECTED=8542b582dd89827f775787ed12a33fd270b54401c09e888a4561d749cfffcee3
+          echo "source sha256=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+          rm -rf /tmp/native-src
+          mkdir -p /tmp/native-src
+          ditto -x -k /tmp/native-mac-source.zip /tmp/native-src
+          test -f /tmp/native-src/main.m
+          test -f /tmp/native-src/Info.plist
+          test -f /tmp/native-src/AppIcon-1024.png
+          plutil -lint /tmp/native-src/Info.plist
+
+      - name: Build Intel Catalina native app
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP='/tmp/Church Communications Location Station.app'
+          EXE="$APP/Contents/MacOS/Church Communications Location Station"
+          RES="$APP/Contents/Resources"
+          rm -rf "$APP" /tmp/AppIcon.iconset
+          mkdir -p "$APP/Contents/MacOS" "$RES" /tmp/AppIcon.iconset
+          cp /tmp/native-src/Info.plist "$APP/Contents/Info.plist"
+
+          for spec in '16 icon_16x16.png' '32 icon_16x16@2x.png' '32 icon_32x32.png' '64 icon_32x32@2x.png' '128 icon_128x128.png' '256 icon_128x128@2x.png' '256 icon_256x256.png' '512 icon_256x256@2x.png' '512 icon_512x512.png' '1024 icon_512x512@2x.png'; do
+            set -- $spec
+            sips -z "$1" "$1" /tmp/native-src/AppIcon-1024.png --out "/tmp/AppIcon.iconset/$2" >/dev/null
+          done
+          iconutil -c icns /tmp/AppIcon.iconset -o "$RES/AppIcon.icns"
+
+          SDK=$(xcrun --sdk macosx --show-sdk-path)
+          xcrun clang \
+            -fobjc-arc -fblocks -arch x86_64 -mmacosx-version-min=10.15 \
+            -isysroot "$SDK" \
+            -framework Cocoa \
+            /tmp/native-src/main.m \
+            -o "$EXE"
+          chmod +x "$EXE"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP"
+          file "$EXE"
+          lipo -info "$EXE"
+          test "$(defaults read "$APP/Contents/Info" LSMinimumSystemVersion)" = '10.15.0'
+
+      - name: Package Apple DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/location-station-dmg
+          OUT='releases/Church-Communications-Mac-Location-Station-2.0.0.dmg'
+          rm -rf "$ROOT" "$OUT"
+          mkdir -p "$ROOT" releases
+          ditto '/tmp/Church Communications Location Station.app' "$ROOT/Church Communications Location Station.app"
+          ln -s /Applications "$ROOT/Applications"
+          hdiutil create -volname 'Church Communications Location Station' -srcfolder "$ROOT" -ov -format UDZO "$OUT"
+          hdiutil verify "$OUT"
+          shasum -a 256 "$OUT" | tee releases/Church-Communications-Mac-Location-Station-2.0.0.dmg.sha256.txt
+
+      - name: Publish native Mac DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'sBranha'
+          git config user.email 'sgbcdb@gmail.com'
+          git pull --rebase origin main
+          git add releases/Church-Communications-Mac-Location-Station-2.0.0.dmg releases/Church-Communications-Mac-Location-Station-2.0.0.dmg.sha256.txt
+          git commit -m 'Publish native Mac Location Station 2.0.0' || exit 0
+          git push
