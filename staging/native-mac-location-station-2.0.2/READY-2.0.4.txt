@@ -1,0 +1,1 @@
+Build Church Communications Mac Location Station 2.0.4 for Intel macOS Catalina. Canonical server endpoint: https://www.compassionworship.com/cc/app/location-helper-api.php
