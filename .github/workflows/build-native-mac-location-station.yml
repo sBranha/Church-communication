@@ -35,19 +35,22 @@ jobs:
           test -f /tmp/native-src/AppIcon-1024.png
           plutil -lint /tmp/native-src/Info.plist
 
-          # Final compiler fix and 2.0.3 version bump.
+          # Keep all proven 2.0.3 fixes, then point directly at the canonical
+          # www host so Catalina does not have to follow a POST redirect.
           sed -i '' 's/newMessageButton/composeButton/g' /tmp/native-src/main.m
-          sed -i '' 's#ChurchCommunications-Mac-Native/2.0.1#ChurchCommunications-Mac-Native/2.0.3#g' /tmp/native-src/main.m
-          sed -i '' 's#<string>2.0.1</string>#<string>2.0.3</string>#g' /tmp/native-src/Info.plist
-          sed -i '' 's#<string>200</string>#<string>203</string>#g' /tmp/native-src/Info.plist
+          sed -i '' 's#ChurchCommunications-Mac-Native/2.0.1#ChurchCommunications-Mac-Native/2.0.4#g' /tmp/native-src/main.m
+          sed -i '' 's#https://compassionworship.com/cc/app/location-helper-api.php#https://www.compassionworship.com/cc/app/location-helper-api.php#g' /tmp/native-src/main.m
+          sed -i '' 's#<string>2.0.1</string>#<string>2.0.4</string>#g' /tmp/native-src/Info.plist
+          sed -i '' 's#<string>200</string>#<string>204</string>#g' /tmp/native-src/Info.plist
 
           grep -q 'composeButton' /tmp/native-src/main.m
           if grep -q 'newMessageButton' /tmp/native-src/main.m; then exit 1; fi
           grep -q '__block NSInteger finalCursor' /tmp/native-src/main.m
-          grep -q 'ChurchCommunications-Mac-Native/2.0.3' /tmp/native-src/main.m
+          grep -q 'ChurchCommunications-Mac-Native/2.0.4' /tmp/native-src/main.m
+          grep -q 'https://www.compassionworship.com/cc/app/location-helper-api.php' /tmp/native-src/main.m
           grep -q 'NSScreenSaverWindowLevel' /tmp/native-src/main.m
           grep -q 'NSWindowCollectionBehaviorCanJoinAllSpaces' /tmp/native-src/main.m
-          grep -q '<string>2.0.3</string>' /tmp/native-src/Info.plist
+          grep -q '<string>2.0.4</string>' /tmp/native-src/Info.plist
           grep -q '<string>10.15.0</string>' /tmp/native-src/Info.plist
 
       - name: Build Intel Catalina native app
@@ -60,29 +63,19 @@ jobs:
           rm -rf "$APP" /tmp/AppIcon.iconset
           mkdir -p "$APP/Contents/MacOS" "$RES" /tmp/AppIcon.iconset
           cp /tmp/native-src/Info.plist "$APP/Contents/Info.plist"
-
           for spec in '16 icon_16x16.png' '32 icon_16x16@2x.png' '32 icon_32x32.png' '64 icon_32x32@2x.png' '128 icon_128x128.png' '256 icon_128x128@2x.png' '256 icon_256x256.png' '512 icon_256x256@2x.png' '512 icon_512x512.png' '1024 icon_512x512@2x.png'; do
             set -- $spec
             sips -z "$1" "$1" /tmp/native-src/AppIcon-1024.png --out "/tmp/AppIcon.iconset/$2" >/dev/null
           done
           iconutil -c icns /tmp/AppIcon.iconset -o "$RES/AppIcon.icns"
-          test -s "$RES/AppIcon.icns"
-
           SDK=$(xcrun --sdk macosx --show-sdk-path)
-          xcrun clang \
-            -fobjc-arc -fblocks -arch x86_64 -mmacosx-version-min=10.15 \
-            -isysroot "$SDK" \
-            -framework Cocoa \
-            /tmp/native-src/main.m \
-            -o "$EXE"
+          xcrun clang -fobjc-arc -fblocks -arch x86_64 -mmacosx-version-min=10.15 -isysroot "$SDK" -framework Cocoa /tmp/native-src/main.m -o "$EXE"
           chmod +x "$EXE"
           codesign --force --deep --sign - "$APP"
           codesign --verify --deep --strict "$APP"
-          file "$EXE"
-          lipo -info "$EXE"
           lipo -info "$EXE" | grep -q 'x86_64'
           test "$(defaults read "$APP/Contents/Info" LSMinimumSystemVersion)" = '10.15.0'
-          test "$(defaults read "$APP/Contents/Info" CFBundleShortVersionString)" = '2.0.3'
+          test "$(defaults read "$APP/Contents/Info" CFBundleShortVersionString)" = '2.0.4'
           test "$(defaults read "$APP/Contents/Info" CFBundleIconFile)" = 'AppIcon'
 
       - name: Package and verify Apple DMG
@@ -90,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           ROOT=/tmp/location-station-dmg
-          OUT='releases/Church-Communications-Mac-Location-Station-2.0.3.dmg'
+          OUT='releases/Church-Communications-Mac-Location-Station-2.0.4.dmg'
           rm -rf "$ROOT" "$OUT"
           mkdir -p "$ROOT" releases
           ditto '/tmp/Church Communications Location Station.app' "$ROOT/Church Communications Location Station.app"
@@ -98,7 +91,7 @@ jobs:
           hdiutil create -volname 'Church Communications Location Station' -srcfolder "$ROOT" -ov -format UDZO "$OUT"
           hdiutil verify "$OUT"
           test -s "$OUT"
-          shasum -a 256 "$OUT" | tee releases/Church-Communications-Mac-Location-Station-2.0.3.dmg.sha256.txt
+          shasum -a 256 "$OUT" | tee releases/Church-Communications-Mac-Location-Station-2.0.4.dmg.sha256.txt
 
       - name: Publish native Mac DMG
         shell: bash
@@ -107,6 +100,6 @@ jobs:
           git config user.name 'sBranha'
           git config user.email 'sgbcdb@gmail.com'
           git pull --rebase origin main
-          git add releases/Church-Communications-Mac-Location-Station-2.0.3.dmg releases/Church-Communications-Mac-Location-Station-2.0.3.dmg.sha256.txt
-          git commit -m 'Publish native Mac Location Station 2.0.3' || exit 0
+          git add releases/Church-Communications-Mac-Location-Station-2.0.4.dmg releases/Church-Communications-Mac-Location-Station-2.0.4.dmg.sha256.txt
+          git commit -m 'Publish native Mac Location Station 2.0.4' || exit 0
           git push
