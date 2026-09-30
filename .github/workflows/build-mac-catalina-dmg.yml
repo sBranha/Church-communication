@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'staging/mac-catalina-dmg/READY*'
+      - 'staging/mac-catalina-dmg-120/READY*'
 
 permissions:
   contents: write
@@ -19,18 +19,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat staging/mac-catalina-dmg/part-*.b64 | base64 -D > /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.1.0.zip
-          ACTUAL=$(shasum -a 256 /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.1.0.zip | awk '{print $1}')
-          EXPECTED=933eca6ee1b8dde4c1f27611cdfbd557699597939b3d9f68d0b60b012d54a2b7
+          cat staging/mac-catalina-dmg-120/part-*.b64 | base64 -D > /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.zip
+          ACTUAL=$(shasum -a 256 /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.zip | awk '{print $1}')
+          EXPECTED=3f8e03a127285ed73edcb20f77c50d217d4626f87d8b04ac1b2824e557722f48
           echo "zip sha256=$ACTUAL"
           test "$ACTUAL" = "$EXPECTED"
           rm -rf /tmp/ccmac /tmp/cc-dmg-root
           mkdir -p /tmp/ccmac /tmp/cc-dmg-root
-          ditto -x -k /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.1.0.zip /tmp/ccmac
+          ditto -x -k /tmp/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.zip /tmp/ccmac
           APP='/tmp/ccmac/Church Communications Location Alert.app'
           test -d "$APP"
           chmod +x "$APP/Contents/MacOS/Church Communications Location Alert"
           plutil -lint "$APP/Contents/Info.plist"
+          codesign --force --deep --sign - "$APP"
           ditto "$APP" '/tmp/cc-dmg-root/Church Communications Location Alert.app'
           ln -s /Applications '/tmp/cc-dmg-root/Applications'
 
@@ -39,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p releases
-          OUT='releases/Church-Communications-Mac-Catalina-Location-Alert-1.1.0.dmg'
+          OUT='releases/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.dmg'
           rm -f "$OUT"
           hdiutil create \
             -volname 'Church Communications Location Alert' \
@@ -48,7 +49,7 @@ jobs:
             -format UDZO \
             "$OUT"
           hdiutil verify "$OUT"
-          shasum -a 256 "$OUT" | tee releases/Church-Communications-Mac-Catalina-Location-Alert-1.1.0.dmg.sha256.txt
+          shasum -a 256 "$OUT" | tee releases/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.dmg.sha256.txt
 
       - name: Publish DMG to repository
         shell: bash
@@ -56,6 +57,6 @@ jobs:
           set -euo pipefail
           git config user.name 'sBranha'
           git config user.email 'sgbcdb@gmail.com'
-          git add releases/Church-Communications-Mac-Catalina-Location-Alert-1.1.0.dmg releases/Church-Communications-Mac-Catalina-Location-Alert-1.1.0.dmg.sha256.txt
-          git commit -m 'Publish Catalina Mac Location Alert DMG' || exit 0
+          git add releases/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.dmg releases/Church-Communications-Mac-Catalina-Location-Alert-1.2.0.dmg.sha256.txt
+          git commit -m 'Publish Catalina Mac Location Alert 1.2.0 DMG' || exit 0
           git push
