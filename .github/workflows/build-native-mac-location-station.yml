@@ -35,13 +35,15 @@ jobs:
           test -f /tmp/native-src/AppIcon-1024.png
           plutil -lint /tmp/native-src/Info.plist
 
-          # Keep all proven 2.0.3 fixes, then point directly at the canonical
-          # www host so Catalina does not have to follow a POST redirect.
           sed -i '' 's/newMessageButton/composeButton/g' /tmp/native-src/main.m
           sed -i '' 's#ChurchCommunications-Mac-Native/2.0.1#ChurchCommunications-Mac-Native/2.0.4#g' /tmp/native-src/main.m
           sed -i '' 's#https://compassionworship.com/cc/app/location-helper-api.php#https://www.compassionworship.com/cc/app/location-helper-api.php#g' /tmp/native-src/main.m
           sed -i '' 's#<string>2.0.1</string>#<string>2.0.4</string>#g' /tmp/native-src/Info.plist
           sed -i '' 's#<string>200</string>#<string>204</string>#g' /tmp/native-src/Info.plist
+
+          echo '=== MAC PAIRING SOURCE EXCERPT ==='
+          grep -n -E -C 12 'pair_json|location-helper-api|Pair|pair' /tmp/native-src/main.m | head -n 220 || true
+          echo '=== END MAC PAIRING SOURCE EXCERPT ==='
 
           grep -q 'composeButton' /tmp/native-src/main.m
           if grep -q 'newMessageButton' /tmp/native-src/main.m; then exit 1; fi
@@ -52,6 +54,37 @@ jobs:
           grep -q 'NSWindowCollectionBehaviorCanJoinAllSpaces' /tmp/native-src/main.m
           grep -q '<string>2.0.4</string>' /tmp/native-src/Info.plist
           grep -q '<string>10.15.0</string>' /tmp/native-src/Info.plist
+
+      - name: Test live pairing API contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://www.compassionworship.com/cc/app/location-helper-api.php?action=pair_json'
+          STATUS=$(curl -sS -o /tmp/pair-body.txt -D /tmp/pair-headers.txt -w '%{http_code}' \
+            -X POST "$URL" \
+            -H 'Accept: application/json' \
+            -H 'Content-Type: application/x-www-form-urlencoded; charset=utf-8' \
+            -H 'User-Agent: ChurchCommunications-Mac-Native/2.0.4' \
+            --data 'code=12345678')
+          echo "HTTP_STATUS=$STATUS"
+          echo '=== HEADERS ==='
+          cat /tmp/pair-headers.txt
+          echo '=== BODY ==='
+          cat /tmp/pair-body.txt
+          echo
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          body=Path('/tmp/pair-body.txt').read_text(errors='replace')
+          try:
+              obj=json.loads(body)
+          except Exception as e:
+              raise SystemExit(f'LIVE PAIRING API IS NOT JSON: {e}; body={body[:1000]!r}')
+          if not isinstance(obj,dict) or 'ok' not in obj:
+              raise SystemExit(f'LIVE PAIRING API JSON CONTRACT INVALID: {obj!r}')
+          print('JSON_OK', obj)
+          PY
+          test "$STATUS" = '403' || test "$STATUS" = '422'
 
       - name: Build Intel Catalina native app
         shell: bash
