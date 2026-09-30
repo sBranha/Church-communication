@@ -4,14 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'staging/native-mac-location-station-2.0.0/READY'
+      - 'staging/native-mac-location-station-2.0.0/READY*'
 
 permissions:
   contents: write
 
 jobs:
   build-native-mac:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
