@@ -4,14 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'staging/mac-catalina-dmg/READY'
+      - 'staging/mac-catalina-dmg/READY*'
 
 permissions:
   contents: write
 
 jobs:
   build-dmg:
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
