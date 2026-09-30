@@ -1,0 +1,140 @@
+#import <Cocoa/Cocoa.h>
+#import <CoreGraphics/CoreGraphics.h>
+#import <sys/stat.h>
+
+static NSString * const CCServer = @"https://compassionworship.com/cc/app/location-helper-api.php";
+static NSString * const CCAppName = @"Church Communications Location Station";
+static NSString * const CCTokenKey = @"CCLocationToken";
+static NSString * const CCLocationNameKey = @"CCLocationName";
+static NSString * const CCLocationIDKey = @"CCLocationID";
+static NSString * const CCCursorKey = @"CCAlertCursor";
+
+typedef void (^CCJSONCompletion)(NSDictionary *json, NSError *error);
+typedef void (^CCTextCompletion)(NSString *text, NSError *error);
+
+@interface CCAppDelegate : NSObject <NSApplicationDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, NSTextFieldDelegate>
+@property(nonatomic,strong) NSWindow *window;
+@property(nonatomic,strong) NSTextField *locationLabel;
+@property(nonatomic,strong) NSTextField *statusLabel;
+@property(nonatomic,strong) NSTableView *threadsTable;
+@property(nonatomic,strong) NSTableView *messagesTable;
+@property(nonatomic,strong) NSScrollView *threadsScroll;
+@property(nonatomic,strong) NSScrollView *messagesScroll;
+@property(nonatomic,strong) NSTextField *composeField;
+@property(nonatomic,strong) NSPopUpButton *priorityPopup;
+@property(nonatomic,strong) NSButton *sendButton;
+@property(nonatomic,strong) NSButton *newMessageButton;
+@property(nonatomic,strong) NSMutableArray *threads;
+@property(nonatomic,strong) NSMutableArray *messages;
+@property(nonatomic,strong) NSMutableArray *targets;
+@property(nonatomic,strong) NSDictionary *selectedThread;
+@property(nonatomic,strong) NSString *token;
+@property(nonatomic,strong) NSString *locationName;
+@property(nonatomic) NSInteger locationID;
+@property(nonatomic,strong) NSTimer *refreshTimer;
+@property(nonatomic,strong) NSTimer *alertTimer;
+@property(nonatomic,strong) NSPanel *alertPanel;
+@property(nonatomic,strong) NSMutableArray *alertPanels;
+@property(nonatomic,strong) NSDictionary *alertMessage;
+@property(nonatomic) BOOL alertPollBusy;
+@property(nonatomic) BOOL uiPollBusy;
+@end
+
+@implementation CCAppDelegate
+
+- (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    self.threads = [NSMutableArray array];
+    self.messages = [NSMutableArray array];
+    self.targets = [NSMutableArray array];
+    self.alertPanels = [NSMutableArray array];
+    NSUserDefaults *d = [NSUserDefaults standardUserDefaults];
+    self.token = [d stringForKey:CCTokenKey];
+    self.locationName = [d stringForKey:CCLocationNameKey] ?: @"Location";
+    self.locationID = [d integerForKey:CCLocationIDKey];
+    [self buildMainWindow];
+    if (self.token.length == 0) {
+        [self.window makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+        [self showPairingDialog];
+    } else {
+        [self startLocationStation];
+    }
+}
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender { return NO; }
+
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender hasVisibleWindows:(BOOL)flag {
+    [self.window makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+    return YES;
+}
+
+- (void)buildMainWindow {
+    NSRect frame = NSMakeRect(0, 0, 1100, 720);
+    NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+    self.window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
+    self.window.title = CCAppName;
+    self.window.delegate = self;
+    [self.window center];
+    self.window.minSize = NSMakeSize(900, 580);
+
+    NSView *root = self.window.contentView;
+    root.wantsLayer = YES;
+    root.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.08 alpha:1.0].CGColor;
+
+    NSView *header = [[NSView alloc] initWithFrame:NSMakeRect(0, 654, 1100, 66)];
+    header.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+    header.wantsLayer = YES;
+    header.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.12 alpha:1.0].CGColor;
+    [root addSubview:header];
+
+    self.locationLabel = [self labelWithFrame:NSMakeRect(22, 27, 620, 28) text:@"CHURCH COMMUNICATIONS — LOCATION" size:22 bold:YES];
+    self.locationLabel.textColor = [NSColor whiteColor];
+    [header addSubview:self.locationLabel];
+
+    self.statusLabel = [self labelWithFrame:NSMakeRect(24, 8, 350, 18) text:@"Connecting…" size:12 bold:NO];
+    self.statusLabel.textColor = [NSColor colorWithCalibratedWhite:0.72 alpha:1.0];
+    [header addSubview:self.statusLabel];
+
+    NSButton *repair = [self buttonWithFrame:NSMakeRect(930, 18, 145, 32) title:@"Pair Another Location" action:@selector(repairClicked:)];
+    repair.autoresizingMask = NSViewMinXMargin;
+    [header addSubview:repair];
+
+    NSView *sidebar = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 285, 654)];
+    sidebar.autoresizingMask = NSViewHeightSizable;
+    sidebar.wantsLayer = YES;
+    sidebar.layer.backgroundColor = [NSColor colorWithCalibratedWhite:0.10 alpha:1.0].CGColor;
+    [root addSubview:sidebar];
+
+    NSTextField *convoTitle = [self labelWithFrame:NSMakeRect(18, 612, 170, 22) text:@"CONVERSATIONS" size:13 bold:YES];
+    convoTitle.textColor = [NSColor colorWithCalibratedRed:1.0 green:0.42 blue:0.42 alpha:1.0];
+    convoTitle.autoresizingMask = NSViewMinYMargin;
+    [sidebar addSubview:convoTitle];
+
+    self.newMessageButton = [self buttonWithFrame:NSMakeRect(180, 605, 88, 30) title:@"New" action:@selector(newMessageClicked:)];
+    self.newMessageButton.autoresizingMask = NSViewMinYMargin;
+    [sidebar addSubview:self.newMessageButton];
+
+    self.threadsTable = [[NSTableView alloc] initWithFrame:NSMakeRect(0,0,270,570)];
+    NSTableColumn *tc = [[NSTableColumn alloc] initWithIdentifier:@"thread"];
+    tc.width = 270;
+    [self.threadsTable addTableColumn:tc];
+    self.threadsTable.headerView = nil;
+    self.threadsTable.delegate = self;
+    self.threadsTable.dataSource = self;
+    self.threadsTable.rowHeight = 60;
+    self.threadsTable.backgroundColor = [NSColor clearColor];
+    self.threadsTable.selectionHighlightStyle = NSTableViewSelectionHighlightStyleRegular;
+    self.threadsScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(8, 12, 269, 585)];
+    self.threadsScroll.documentView = self.threadsTable;
+    self.threadsScroll.hasVerticalScroller = YES;
+    self.threadsScroll.drawsBackground = NO;
+    self.threadsScroll.autoresizingMask = NSViewHeightSizable | NSViewWidthSizable;
+    [sidebar addSubview:self.threadsScroll];
+
+    NSView *main = [[NSView alloc] initWithFrame:NSMakeRect(285,0,815,654)];
+    main.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [root addSubview:main];
+
+    NSTextField *chatTitle = [self labelWithFrame:NSMakeRect(24, 612, 700, 25) text:@"Select a conversation" size:18 bold:YES];
+    chatTitle.tag = 701;
