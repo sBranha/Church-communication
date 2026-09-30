@@ -25,7 +25,6 @@ jobs:
           rm -rf /tmp/native-src
           mkdir -p /tmp/native-src
           ditto -x -k /tmp/native-mac-source.zip /tmp/native-src
-
           python3 - <<'PY'
           from pathlib import Path
           p=Path('/tmp/native-src/main.m')
@@ -37,89 +36,25 @@ jobs:
           if old not in s: raise SystemExit('server constant not found')
           s=s.replace(old,new)
           s=s.replace('static NSString * const CCAppName = @"Church Communications Location Station";','static NSString * const CCAppName = @"Church Communications Location Station — 2.1.0";')
-
-          old_launch='''    if (self.token.length == 0) {
-        [self.window makeKeyAndOrderFront:nil];
-        [NSApp activateIgnoringOtherApps:YES];
-        [self showPairingDialog];
-    } else {
-        [self startLocationStation];
-    }
-}'''
-          new_launch='''    if (self.token.length == 0) {
-        [self.window makeKeyAndOrderFront:nil];
-        [NSApp activateIgnoringOtherApps:YES];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (self.token.length == 0) [self showPairingDialog];
-        });
-    } else {
-        [self startLocationStation];
-    }
-}
-
-- (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {
-    for (NSURL *url in urls) [self handlePairingCallbackURL:url];
-}
-
-- (void)handlePairingCallbackURL:(NSURL *)url {
-    if (!url) return;
-    if (![[url.scheme lowercaseString] isEqualToString:@"ccstation"] || ![[url.host lowercaseString] isEqualToString:@"paired"]) return;
-    NSURLComponents *parts=[NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-    NSMutableDictionary *v=[NSMutableDictionary dictionary];
-    for(NSURLQueryItem *item in parts.queryItems ?: @[]) if(item.name.length) v[item.name]=item.value ?: @"";
-    NSString *tok=[v[@"token"] description] ?: @"";
-    NSString *name=[v[@"name"] description] ?: @"Location";
-    NSInteger lid=[v[@"location_id"] integerValue];
-    if(tok.length < 32 || lid <= 0){ [self showError:@"The browser returned an invalid pairing result. Please try Pair Another Location again."]; return; }
-    self.token=tok; self.locationName=name.length?name:@"Location"; self.locationID=lid;
-    NSUserDefaults *d=[NSUserDefaults standardUserDefaults];
-    [d setObject:self.token forKey:CCTokenKey]; [d setObject:self.locationName forKey:CCLocationNameKey]; [d setInteger:self.locationID forKey:CCLocationIDKey]; [d removeObjectForKey:CCCursorKey]; [d synchronize];
-    dispatch_async(dispatch_get_main_queue(), ^{ self.locationLabel.stringValue=self.locationName; [self.window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES]; });
-    [self startLocationStation];
-}'''
+          old_launch='    if (self.token.length == 0) {\n        [self.window makeKeyAndOrderFront:nil];\n        [NSApp activateIgnoringOtherApps:YES];\n        [self showPairingDialog];\n    } else {\n        [self startLocationStation];\n    }\n}'
+          new_launch='    if (self.token.length == 0) {\n        [self.window makeKeyAndOrderFront:nil];\n        [NSApp activateIgnoringOtherApps:YES];\n        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{\n            if (self.token.length == 0) [self showPairingDialog];\n        });\n    } else {\n        [self startLocationStation];\n    }\n}\n\n- (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {\n    for (NSURL *url in urls) [self handlePairingCallbackURL:url];\n}\n\n- (void)handlePairingCallbackURL:(NSURL *)url {\n    if (!url) return;\n    NSString *scheme = url.scheme.lowercaseString ?: @"";\n    NSString *host = url.host.lowercaseString ?: @"";\n    if (![scheme isEqualToString:@"ccstation"] || ![host isEqualToString:@"paired"]) return;\n    NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];\n    NSMutableDictionary *values = [NSMutableDictionary dictionary];\n    for (NSURLQueryItem *item in components.queryItems ?: @[]) { if (item.name.length) values[item.name] = item.value ?: @""; }\n    NSString *token = [values[@"token"] description] ?: @"";\n    NSString *name = [values[@"name"] description] ?: @"Location";\n    NSInteger locationID = [values[@"location_id"] integerValue];\n    if (token.length < 32 || locationID <= 0) { [self showError:@"The browser returned an invalid pairing result. Please generate a new Pair Device code and try again."]; return; }\n    [self stopTimers];\n    self.token = token; self.locationName = name.length ? name : @"Location"; self.locationID = locationID;\n    NSUserDefaults *d = [NSUserDefaults standardUserDefaults];\n    [d setObject:self.token forKey:CCTokenKey]; [d setObject:self.locationName forKey:CCLocationNameKey]; [d setInteger:self.locationID forKey:CCLocationIDKey]; [d removeObjectForKey:CCCursorKey]; [d synchronize];\n    [self.window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];\n    [self startLocationStation];\n    self.statusLabel.stringValue = @"Paired successfully — connecting…";\n}'
           if old_launch not in s: raise SystemExit('actual launch block not found')
           s=s.replace(old_launch,new_launch)
-
           start=s.index('- (void)showPairingDialog {')
           end=s.index('\n- (void)repairClicked:', start)
-          new_pair='''- (void)showPairingDialog {
-    NSAlert *a = [[NSAlert alloc] init];
-    a.messageText = @"Pair This Mac in Your Browser";
-    a.informativeText = @"This version uses a completely different pairing system.\\n\\n1. In Church Communications Admin → Locations, choose Pair Device and get the 8-digit code.\\n2. Click Open Pairing Page below.\\n3. Enter that code on the Church Communications web page.\\n4. The browser will send the completed pairing directly back to this Mac app.\\n\\nMac app version 2.1.0";
-    [a addButtonWithTitle:@"Open Pairing Page"];
-    [a addButtonWithTitle:@"Cancel"];
-    [NSApp activateIgnoringOtherApps:YES];
-    if ([a runModal] != NSAlertFirstButtonReturn) return;
-    NSURLComponents *c=[NSURLComponents componentsWithString:CCPairURL];
-    c.queryItems=@[[NSURLQueryItem queryItemWithName:@"source" value:@"mac"],[NSURLQueryItem queryItemWithName:@"app_version" value:@"2.1.0"]];
-    if(!c.URL || ![[NSWorkspace sharedWorkspace] openURL:c.URL]) { [self showError:@"Could not open the Church Communications pairing page in your browser."]; return; }
-    self.statusLabel.stringValue=@"Waiting for browser pairing…";
-}
-'''
+          new_pair='- (void)showPairingDialog {\n    if (self.token.length) return;\n    NSAlert *a = [[NSAlert alloc] init];\n    a.messageText = @"Pair This Mac in Your Browser";\n    a.informativeText = @"This version uses a completely different pairing system.\\n\\n1. In Admin → Locations, choose Pair Device and get the 8-digit code.\\n2. Click Open Pairing Page below.\\n3. Enter that code on the Church Communications web page.\\n4. The browser will send the completed pairing back to this Mac app.\\n\\nNo JSON pairing request is made by the Mac app.\\n\\nMac app version 2.1.0";\n    [a addButtonWithTitle:@"Open Pairing Page"];\n    [a addButtonWithTitle:@"Cancel"];\n    [NSApp activateIgnoringOtherApps:YES];\n    if ([a runModal] != NSAlertFirstButtonReturn) return;\n    NSURLComponents *c = [NSURLComponents componentsWithString:CCPairURL];\n    c.queryItems = @[[NSURLQueryItem queryItemWithName:@"source" value:@"mac"],[NSURLQueryItem queryItemWithName:@"app_version" value:@"2.1.0"]];\n    if (!c.URL || ![[NSWorkspace sharedWorkspace] openURL:c.URL]) { [self showError:@"Could not open the Church Communications pairing page in your browser."]; return; }\n    self.statusLabel.stringValue = @"Waiting for browser pairing…";\n    [self.window makeKeyAndOrderFront:nil];\n}\n'
           s=s[:start]+new_pair+s[end:]
-          s=s.replace('This will disconnect the current location from this Mac and ask for a new setup code.','This will disconnect the current location from this Mac and open the new browser pairing page.')
+          s=s.replace('This will disconnect the current location from this Mac and ask for a new setup code.','This will disconnect the current location from this Mac and reopen the browser-based pairing page.')
           if '[self postJSONAction:@"pair_json"' in s: raise SystemExit('old direct JSON pairing still present')
           p.write_text(s)
-
           p=Path('/tmp/native-src/Info.plist')
-          info=p.read_text()
-          info=info.replace('<string>2.0.1</string>','<string>2.1.0</string>')
-          info=info.replace('<string>200</string>','<string>210</string>')
+          info=p.read_text().replace('<string>2.0.1</string>','<string>2.1.0</string>').replace('<string>200</string>','<string>210</string>')
           marker='  <key>LSApplicationCategoryType</key>'
-          urltypes='''  <key>CFBundleURLTypes</key>
-  <array>
-    <dict>
-      <key>CFBundleURLName</key><string>Church Communications Location Station Pairing</string>
-      <key>CFBundleURLSchemes</key>
-      <array><string>ccstation</string></array>
-    </dict>
-  </array>
-'''
+          urltypes='  <key>CFBundleURLTypes</key>\n  <array>\n    <dict>\n      <key>CFBundleURLName</key><string>Church Communications Location Station Pairing</string>\n      <key>CFBundleURLSchemes</key>\n      <array><string>ccstation</string></array>\n    </dict>\n  </array>\n'
           if marker not in info: raise SystemExit('plist insertion point not found')
           info=info.replace(marker,urltypes+marker)
           p.write_text(info)
           PY
-
           plutil -lint /tmp/native-src/Info.plist
           grep -q 'ChurchCommunications-Mac-Native/2.1.0' /tmp/native-src/main.m
           grep -q 'native-station-api.php' /tmp/native-src/main.m
