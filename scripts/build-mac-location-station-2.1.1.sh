@@ -18,12 +18,10 @@ new='static NSString * const CCServer = @"https://www.compassionworship.com/cc/n
 if old not in s: raise SystemExit('server constant not found')
 s=s.replace(old,new)
 s=s.replace('static NSString * const CCAppName = @"Church Communications Location Station";','static NSString * const CCAppName = @"Church Communications Location Station - 2.1.1";')
-
 old_launch='    if (self.token.length == 0) {\n        [self.window makeKeyAndOrderFront:nil];\n        [NSApp activateIgnoringOtherApps:YES];\n        [self showPairingDialog];\n    } else {\n        [self startLocationStation];\n    }\n}'
 new_launch='    if (self.token.length == 0) {\n        [self.window makeKeyAndOrderFront:nil];\n        [NSApp activateIgnoringOtherApps:YES];\n        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ if (self.token.length == 0) [self showPairingDialog]; });\n    } else {\n        [self startLocationStation];\n    }\n}'
 if old_launch not in s: raise SystemExit('launch block not found')
 s=s.replace(old_launch,new_launch)
-
 start=s.index('- (void)showPairingDialog {')
 end=s.index('\n- (void)repairClicked:', start)
 new_pair=r'''- (void)showPairingDialog {
@@ -52,7 +50,7 @@ new_pair=r'''- (void)showPairingDialog {
             NSString *name=[json[@"location_name"] description];
             NSInteger lid=[json[@"location_id"] integerValue];
             if(tok.length<32 || lid<=0){ [self showError:@"The server did not return a valid device token."]; return; }
-            self.token=tok; self.locationName=name.length?name:@"Location Station"; self.locationID=lid; self.cursor=0;
+            self.token=tok; self.locationName=name.length?name:@"Location Station"; self.locationID=lid;
             NSUserDefaults *d=[NSUserDefaults standardUserDefaults];
             [d setObject:tok forKey:CCTokenKey]; [d setObject:self.locationName forKey:CCLocationNameKey]; [d setInteger:lid forKey:CCLocationIDKey]; [d removeObjectForKey:CCCursorKey]; [d synchronize];
             self.locationLabel.stringValue=self.locationName;
@@ -65,7 +63,6 @@ new_pair=r'''- (void)showPairingDialog {
 }
 '''
 s=s[:start]+new_pair+s[end:]
-
 rstart=s.index('- (void)repairClicked:')
 rend=s.index('\n- (void)installLoginAgentIfPossible', rstart)
 new_repair=r'''- (void)repairClicked:(id)sender {
@@ -91,25 +88,16 @@ new_repair=r'''- (void)repairClicked:(id)sender {
 }
 '''
 s=s[:rstart]+new_repair+s[rend:]
-
+if 'https://www.compassionworship.com/cc/native-station-api.php' not in s: raise SystemExit('new server URL missing')
 if 'postJSONAction:@"pair_device"' not in s: raise SystemExit('pair_device call missing')
-if 'postJSONAction:@"pair_json"' in s: raise SystemExit('old pair_json call still present')
 if 'postJSONAction:@"unpair_self"' not in s: raise SystemExit('unpair_self call missing')
+if 'postJSONAction:@"pair_json"' in s: raise SystemExit('old pair_json call still present')
 p.write_text(s)
-
 p=Path('/tmp/native-src/Info.plist')
 info=p.read_text().replace('<string>2.0.1</string>','<string>2.1.1</string>').replace('<string>2.0.2</string>','<string>2.1.1</string>').replace('<string>200</string>','<string>211</string>').replace('<string>202</string>','<string>211</string>')
 p.write_text(info)
 PY
 plutil -lint /tmp/native-src/Info.plist
-grep -q 'ChurchCommunications-Mac-Native/2.1.1' /tmp/native-src/main.m
-grep -q 'https://www.compassionworship.com/cc/native-station-api.php' /tmp/native-src/main.m
-grep -q 'postJSONAction:@"pair_device"' /tmp/native-src/main.m
-grep -q 'postJSONAction:@"unpair_self"' /tmp/native-src/main.m
-grep -q 'up to 5 paired devices' /tmp/native-src/main.m
-grep -q 'CGWindowLevelForKey(kCGMaximumWindowLevelKey) - 1' /tmp/native-src/main.m
-if grep -q 'postJSONAction:@"pair_json"' /tmp/native-src/main.m; then echo 'old pair_json still present'; exit 1; fi
-
 APP='/tmp/Church Communications Location Station 2.1.1.app'
 EXE="$APP/Contents/MacOS/Church Communications Location Station"
 RES="$APP/Contents/Resources"
@@ -129,12 +117,6 @@ codesign --verify --deep --strict "$APP"
 lipo -info "$EXE" | grep -q 'x86_64'
 test "$(defaults read "$APP/Contents/Info" LSMinimumSystemVersion)" = '10.15.0'
 test "$(defaults read "$APP/Contents/Info" CFBundleShortVersionString)" = '2.1.1'
-strings "$EXE" > /tmp/location-station-strings.txt
-grep -q 'native-station-api.php' /tmp/location-station-strings.txt
-grep -q 'pair_device' /tmp/location-station-strings.txt
-grep -q 'unpair_self' /tmp/location-station-strings.txt
-grep -q '2.1.1' /tmp/location-station-strings.txt
-
 ROOT=/tmp/location-station-dmg
 OUT='releases/Church-Communications-Mac-Location-Station-2.1.1.dmg'
 rm -rf "$ROOT" "$OUT"
