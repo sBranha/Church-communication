@@ -1,0 +1,31 @@
+name: Build Tech Booth Mac 3.0.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native-mac-tech-booth-3.0.0/**'
+      - 'scripts/build-tech-booth-3.0.0.sh'
+      - 'staging/tech-booth-3.0.0/READY*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build fresh Tech Booth installer
+        shell: bash
+        run: bash scripts/build-tech-booth-3.0.0.sh
+      - name: Publish installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'sBranha'
+          git config user.email 'sgbcdb@gmail.com'
+          git pull --rebase origin main
+          git add releases/Church-Communications-Tech-Booth-3.0.0-Installer.dmg releases/Church-Communications-Tech-Booth-3.0.0-Installer.dmg.sha256.txt releases/Church-Communications-Tech-Booth-3.0.0.pkg releases/Church-Communications-Tech-Booth-3.0.0.pkg.sha256.txt
+          git commit -m 'Publish standalone Tech Booth 3.0.0 installer' || exit 0
+          git push
