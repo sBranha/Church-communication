@@ -10,6 +10,8 @@ python3 - <<'PY'
 from pathlib import Path
 p=Path('/tmp/native-src/main.m')
 s=p.read_text()
+if '#import <CoreGraphics/CoreGraphics.h>' not in s:
+    s=s.replace('#import <Cocoa/Cocoa.h>','#import <Cocoa/Cocoa.h>\n#import <CoreGraphics/CoreGraphics.h>',1)
 s=s.replace('newMessageButton','composeButton')
 s=s.replace('ChurchCommunications-Mac-Native/2.0.1','ChurchCommunications-Mac-Native/2.1.2')
 s=s.replace('ChurchCommunications-Mac-Native/2.0.2','ChurchCommunications-Mac-Native/2.1.2')
@@ -18,12 +20,10 @@ new='static NSString * const CCServer = @"https://www.compassionworship.com/cc/n
 if old not in s: raise SystemExit('server constant not found')
 s=s.replace(old,new)
 s=s.replace('static NSString * const CCAppName = @"Church Communications Location Station";','static NSString * const CCAppName = @"Church Communications Location Station - 2.1.2";')
-# Force one clean Station-Key setup when upgrading from any of the failed pairing builds.
 marker='    self.locationID = [d integerForKey:CCLocationIDKey];\n'
 insert='''    self.locationID = [d integerForKey:CCLocationIDKey];\n    if (![d boolForKey:@"CCPermanentStationKeyMode"]) {\n        self.token = nil; self.locationName = @"Location"; self.locationID = 0;\n        [d removeObjectForKey:CCTokenKey]; [d removeObjectForKey:CCLocationNameKey]; [d removeObjectForKey:CCLocationIDKey]; [d removeObjectForKey:CCCursorKey]; [d synchronize];\n    }\n'''
 if marker not in s: raise SystemExit('defaults marker not found')
 s=s.replace(marker,insert,1)
-# Replace the entire old pair-code dialog with a permanent Station Key validator.
 start=s.index('- (void)showPairingDialog {')
 end=s.index('\n- (void)repairClicked:', start)
 new_pair=r'''- (void)showPairingDialog {
@@ -86,10 +86,14 @@ new_repair=r'''- (void)repairClicked:(id)sender {
 '''
 s=s[:rstart]+new_repair+s[rend:]
 s=s.replace('title:@"Pair Another Location"','title:@"Change Station Key"')
+# Force direct message alerts above normal application windows on every Space/full-screen auxiliary context.
+s=s.replace('self.alertPanel.level = NSScreenSaverWindowLevel;','self.alertPanel.level = CGWindowLevelForKey(kCGMaximumWindowLevelKey) - 1;')
+s=s.replace('self.alertPanel.level=NSScreenSaverWindowLevel;','self.alertPanel.level=CGWindowLevelForKey(kCGMaximumWindowLevelKey) - 1;')
+s=s.replace('panel.level = NSScreenSaverWindowLevel;','panel.level = CGWindowLevelForKey(kCGMaximumWindowLevelKey) - 1;')
+s=s.replace('panel.level=NSScreenSaverWindowLevel;','panel.level=CGWindowLevelForKey(kCGMaximumWindowLevelKey) - 1;')
 if 'pair_device' in s or 'pair_json' in s or 'claim_setup' in s: raise SystemExit('old pairing action still present')
 if 'CCPermanentStationKeyMode' not in s: raise SystemExit('station key marker missing')
 if 'device_status' not in s: raise SystemExit('station key validation missing')
-if 'CGWindowLevelForKey(kCGMaximumWindowLevelKey) - 1' not in s: raise SystemExit('maximum always-on-top alert level missing')
 p.write_text(s)
 p=Path('/tmp/native-src/Info.plist')
 info=p.read_text().replace('<string>2.0.1</string>','<string>2.1.2</string>').replace('<string>2.0.2</string>','<string>2.1.2</string>').replace('<string>200</string>','<string>212</string>').replace('<string>202</string>','<string>212</string>')
@@ -108,7 +112,7 @@ for spec in '16 icon_16x16.png' '32 icon_16x16@2x.png' '32 icon_32x32.png' '64 i
 done
 iconutil -c icns /tmp/AppIcon.iconset -o "$RES/AppIcon.icns"
 SDK=$(xcrun --sdk macosx --show-sdk-path)
-xcrun clang -fobjc-arc -fblocks -arch x86_64 -mmacosx-version-min=10.15 -isysroot "$SDK" -framework Cocoa -framework IOKit /tmp/native-src/main.m -o "$EXE"
+xcrun clang -fobjc-arc -fblocks -arch x86_64 -mmacosx-version-min=10.15 -isysroot "$SDK" -framework Cocoa -framework IOKit -framework CoreGraphics /tmp/native-src/main.m -o "$EXE"
 chmod +x "$EXE"
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
