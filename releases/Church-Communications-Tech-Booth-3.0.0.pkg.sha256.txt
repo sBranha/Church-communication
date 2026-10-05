@@ -1,0 +1,1 @@
+a3804ae868199bcb6e16ad4676f2d39afd6cad863a726d5d40c95532c5aa7d94  releases/Church-Communications-Tech-Booth-3.0.0.pkg
