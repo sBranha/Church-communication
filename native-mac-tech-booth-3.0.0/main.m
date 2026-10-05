@@ -92,7 +92,9 @@ static NSString * const CCCursorKey = @"CCStationV3Cursor";
 }
 
 - (NSString *)urlEncode:(NSString *)s {
-    return [s stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]] ?: @"";
+    NSMutableCharacterSet *allowed=[[NSCharacterSet alphanumericCharacterSet] mutableCopy];
+    [allowed addCharactersInString:@"-._~"];
+    return [s stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
 }
 
 - (void)requestAction:(NSString *)action method:(NSString *)method params:(NSDictionary *)params token:(NSString *)token completion:(void(^)(NSDictionary *,NSError *))completion {
@@ -162,10 +164,12 @@ static NSString * const CCCursorKey = @"CCStationV3Cursor";
     if(!self.token.length)return;
     [self requestAction:@"poll" method:@"GET" params:@{ @"after":@(self.cursor) } token:self.token completion:^(NSDictionary *json,NSError *error){
         if(error){ dispatch_async(dispatch_get_main_queue(), ^{ self.statusLabel.stringValue=[NSString stringWithFormat:@"Connection problem — %@",error.localizedDescription]; }); return; }
-        NSArray *msgs=[json objectForKey:@"messages"]; NSInteger newCursor=[[json objectForKey:@"cursor"] integerValue];
-        for(NSDictionary *m in msgs){ NSInteger mid=[[m objectForKey:@"id"] integerValue]; NSInteger tid=[[m objectForKey:@"thread_id"] integerValue]; NSString *sender=[[m objectForKey:@"sender"] description]; NSString *body=[[m objectForKey:@"body"] description]; NSString *title=[[m objectForKey:@"title"] description]; self.currentThreadID=tid; self.sendButton.enabled=(tid>0); [self appendLog:[NSString stringWithFormat:@"%@ — %@\n%@",sender,title,body]]; [self showNativeAlertFrom:sender title:title body:body threadID:tid messageID:mid]; }
-        if(newCursor>self.cursor){ self.cursor=newCursor; [[NSUserDefaults standardUserDefaults] setInteger:self.cursor forKey:CCCursorKey]; [[NSUserDefaults standardUserDefaults] synchronize]; }
-        dispatch_async(dispatch_get_main_queue(), ^{ self.statusLabel.stringValue=@"Connected — waiting for direct messages"; });
+        NSArray *msgs=[json objectForKey:@"messages"] ?: @[]; NSInteger newCursor=[[json objectForKey:@"cursor"] integerValue];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            for(NSDictionary *m in msgs){ NSInteger mid=[[m objectForKey:@"id"] integerValue]; NSInteger tid=[[m objectForKey:@"thread_id"] integerValue]; NSString *sender=[[m objectForKey:@"sender"] description]; NSString *body=[[m objectForKey:@"body"] description]; NSString *title=[[m objectForKey:@"title"] description]; self.currentThreadID=tid; self.sendButton.enabled=(tid>0); [self appendLog:[NSString stringWithFormat:@"%@ — %@\n%@",sender,title,body]]; [self showNativeAlertFrom:sender title:title body:body threadID:tid messageID:mid]; }
+            if(newCursor>self.cursor){ self.cursor=newCursor; [[NSUserDefaults standardUserDefaults] setInteger:self.cursor forKey:CCCursorKey]; [[NSUserDefaults standardUserDefaults] synchronize]; }
+            self.statusLabel.stringValue=@"Connected — waiting for direct messages";
+        });
     }];
 }
 
