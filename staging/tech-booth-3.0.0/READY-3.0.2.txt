@@ -1,0 +1,4 @@
+Build Church Communications Tech Booth Mac 3.0.2.
+Baseline verified: Mac app 3.0.1.
+Website behavior target: Church Communications 2.5.22.
+Required: six-digit pairing plus huge full-screen-priority incoming-message overlay.
