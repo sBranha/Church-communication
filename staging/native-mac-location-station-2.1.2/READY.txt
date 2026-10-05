@@ -1,0 +1,1 @@
+Build Church Communications Mac Location Station 2.1.2 with permanent Station Key authentication.
