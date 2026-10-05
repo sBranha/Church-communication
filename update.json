@@ -1,6 +1,10 @@
 {
-  "version": "1.0.5",
-  "zip_url": "https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/Church-Communications-1.0.5-update2.zip",
-  "sha256": "dc884a37eb5cd4fee1d266e1bc24a51beec8257a67a75b2ca7601cc7f1ae2dea",
-  "notes": "Compatibility update package for 1.0.5. Excludes setup.php because setup is only for brand-new installations. Includes Team Leaders, profile pictures, group pictures, Seen-by icons, and edit/delete locations."
+  "version": "2.5.18",
+  "requires": "2.5.17",
+  "notes": "Permanent Mac Station Key update. Verified file-by-file installation; live config, database, and data directory are preserved.",
+  "files": [
+    {"path":"native-station-api.php","url":"https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/2.5.18/native-station-api.php","sha256":"c66820701a9b412aad315bf4f82993232b594c0eeb83c0c5b3a4bf6a88b66831"},
+    {"path":"station-key.php","url":"https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/2.5.18/station-key.php","sha256":"01f720c8acda526bd64ef24144100d056223cc4072d330738fe6dd76f4252d99"},
+    {"path":"VERSION.txt","url":"https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/2.5.18/VERSION.txt","sha256":"542ea68c476dac33e61dc6acfcd184748252c484d8d69570ac08fd1f7e8beb4d"}
+  ]
 }
