@@ -1,4 +1,4 @@
-name: Build Tech Booth Mac 3.0.1
+name: Build Tech Booth Mac 2.5.22
 
 on:
   push:
@@ -26,6 +26,6 @@ jobs:
           git config user.name 'sBranha'
           git config user.email 'sgbcdb@gmail.com'
           git pull --rebase origin main
-          git add releases/Church-Communications-Tech-Booth-3.0.1.dmg releases/Church-Communications-Tech-Booth-3.0.1.dmg.sha256.txt
-          git commit -m 'Publish Tech Booth 3.0.1 drag-install DMG' || exit 0
+          git add releases/Church-Communications-Tech-Booth-2.5.22.dmg releases/Church-Communications-Tech-Booth-2.5.22.dmg.sha256.txt
+          git commit -m 'Publish Tech Booth 2.5.22 DMG with full-screen priority alerts' || exit 0
           git push
