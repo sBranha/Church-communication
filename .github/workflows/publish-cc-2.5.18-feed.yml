@@ -14,42 +14,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Decode and publish verified file feed
+      - name: Publish verified 2.5.18 files
         shell: bash
         run: |
           set -euo pipefail
           base64 -d staging/cc-2.5.18-update-package.b64 > /tmp/cc2518.zip
-          unzip -t /tmp/cc2518.zip
-          rm -rf /tmp/cc2518
-          mkdir -p /tmp/cc2518 releases/2.5.18
-          unzip -q /tmp/cc2518.zip -d /tmp/cc2518
-          cp /tmp/cc2518/native-station-api.php releases/2.5.18/native-station-api.php
-          cp /tmp/cc2518/station-key.php releases/2.5.18/station-key.php
-          cp /tmp/cc2518/VERSION.txt releases/2.5.18/VERSION.txt
-          cp /tmp/cc2518/RELEASE-NOTES-2.5.18.txt releases/2.5.18/RELEASE-NOTES-2.5.18.txt
+          mkdir -p releases/2.5.18
+          unzip -p /tmp/cc2518.zip native-station-api.php > releases/2.5.18/native-station-api.php
+          unzip -p /tmp/cc2518.zip station-key.php > releases/2.5.18/station-key.php
+          unzip -p /tmp/cc2518.zip VERSION.txt > releases/2.5.18/VERSION.txt
           NATIVE=$(sha256sum releases/2.5.18/native-station-api.php | awk '{print $1}')
           KEY=$(sha256sum releases/2.5.18/station-key.php | awk '{print $1}')
           VER=$(sha256sum releases/2.5.18/VERSION.txt | awk '{print $1}')
-          NOTES=$(sha256sum releases/2.5.18/RELEASE-NOTES-2.5.18.txt | awk '{print $1}')
           test "$NATIVE" = 'c66820701a9b412aad315bf4f82993232b594c0eeb83c0c5b3a4bf6a88b66831'
           test "$KEY" = '01f720c8acda526bd64ef24144100d056223cc4072d330738fe6dd76f4252d99'
           test "$VER" = '542ea68c476dac33e61dc6acfcd184748252c484d8d69570ac08fd1f7e8beb4d'
-          test "$NOTES" = '9fd9b591f0693be9fef44d9271545264cc71929b800b5bb900268df352261a39'
+          php -l releases/2.5.18/native-station-api.php
+          php -l releases/2.5.18/station-key.php
           cat > update.json <<EOF
           {
             "version": "2.5.18",
             "requires": "2.5.17",
-            "notes": "Permanent Mac Station Key update. Uses verified file-by-file installation and does not overwrite config.php or the data directory.",
+            "notes": "Permanent Mac Station Key update. Verified file-by-file installation; live config, database, and data directory are preserved.",
             "files": [
               {"path":"native-station-api.php","url":"https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/2.5.18/native-station-api.php","sha256":"$NATIVE"},
               {"path":"station-key.php","url":"https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/2.5.18/station-key.php","sha256":"$KEY"},
-              {"path":"VERSION.txt","url":"https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/2.5.18/VERSION.txt","sha256":"$VER"},
-              {"path":"RELEASE-NOTES-2.5.18.txt","url":"https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/2.5.18/RELEASE-NOTES-2.5.18.txt","sha256":"$NOTES"}
+              {"path":"VERSION.txt","url":"https://raw.githubusercontent.com/sBranha/Church-communication/main/releases/2.5.18/VERSION.txt","sha256":"$VER"}
             ]
           }
           EOF
-          php -l releases/2.5.18/native-station-api.php
-          php -l releases/2.5.18/station-key.php
+          python3 -m json.tool update.json >/dev/null
       - name: Commit feed
         shell: bash
         run: |
